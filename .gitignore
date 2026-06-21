@@ -25,6 +25,7 @@ CLAUDE.local.md
 AGENTS.override.md
 .claude/settings.local.json
 .agents/settings.local.json
+.codex/
 # Editor directories and files
 # Logs
 AGENT.md

@@ -82,8 +82,12 @@ When task scope is incomplete, inspect in this order:
 
 Execution rules:
 
+- Prefer `rtk` for shell/build/verify commands when it is available in the current environment.
+- For local code/text/file discovery, use `rtk rg` by default.
+- Do not fall back to plain `rg` unless `rtk rg` failed, is unavailable, or cannot express the needed search.
+- If you fall back from `rtk rg`, state the reason briefly before or alongside the action.
 - Start with the smallest plausible file set
-- Prefer targeted search (`rg <symbol|string> <paths>`) over repository-wide scans
+- Prefer targeted search (`rtk rg <symbol|string> <paths>`) over repository-wide scans
 - Ignore generated or output-heavy areas unless the task directly targets them, especially `dist/`, `node_modules/`, `src-tauri/target/`, `.app/`, `src-tauri/icons/`, and `src-tauri/png/`. Exception: `dist/cli.js` is the shipped CLI build artifact (see `package.json` `files`); when you change anything under `bin/`, rebuild it via `pnpm run cli:build` and commit the regenerated `dist/cli.js` alongside the source change
 - Keep changes local to one subsystem when possible
 - Run the narrowest relevant verification first, expand only if needed
