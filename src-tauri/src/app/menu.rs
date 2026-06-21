@@ -13,13 +13,14 @@ pub fn set_app_menu(
 ) -> tauri::Result<()> {
     let pake_version = env!("CARGO_PKG_VERSION");
     let pake_menu_item_title = format!("Built with Pake V{}", pake_version);
+    let app_name = app.package_info().name.clone();
 
     let window_submenu = window_menu(app)?;
 
     let menu = Menu::with_items(
         app,
         &[
-            &app_menu(app)?,
+            &app_menu(app, &app_name)?,
             &file_menu(app, allow_multi_window)?,
             &edit_menu(app, enable_find)?,
             &view_menu(app)?,
@@ -38,12 +39,12 @@ pub fn set_app_menu(
     Ok(())
 }
 
-fn app_menu(app: &AppHandle<Wry>) -> tauri::Result<Submenu<Wry>> {
-    let app_menu = Submenu::new(app, "Pake", true)?;
+fn app_menu(app: &AppHandle<Wry>, app_name: &str) -> tauri::Result<Submenu<Wry>> {
+    let app_menu = Submenu::new(app, app_name, true)?;
     let about_metadata = AboutMetadata::default();
     app_menu.append(&PredefinedMenuItem::about(
         app,
-        Some("Pake"),
+        Some("О программе"),
         Some(about_metadata),
     )?)?;
     app_menu.append(&PredefinedMenuItem::separator(app)?)?;
