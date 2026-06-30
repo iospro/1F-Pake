@@ -1,0 +1,17 @@
+{
+  "name": "1forma",
+  "title": "Первая Форма",
+  "url": "https://ru.1forma.ru",
+  "platform": "macos",
+  "window": {
+    "width": 1600,
+    "height": 1000,
+    "hideTitleBar": true
+  },
+  "multi_window": true,
+  "notes": [
+    "Wide desktop viewport",
+    "Use overlay title bar with history buttons",
+    "Test whether layout differs from 1forma.ru"
+  ]
+}

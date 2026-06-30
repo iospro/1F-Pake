@@ -1,0 +1,12 @@
+{
+  "name": "1forma",
+  "title": "Первая Форма",
+  "url": "https://ru.1forma.ru",
+  "platform": "macos",
+  "multi_window": true,
+  "notes": [
+    "Open the site in a separate desktop window",
+    "Keep a wide viewport for stable layout",
+    "If login is needed, do it inside the app"
+  ]
+}
