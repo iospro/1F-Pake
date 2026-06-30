@@ -1,0 +1,99 @@
+name: Build 1Forma Windows MSI
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.26.2"
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "App slug"
+        required: true
+        default: "1forma"
+      title:
+        description: "App title"
+        required: true
+        default: "Первая Форма"
+      url:
+        description: "App URL"
+        required: true
+        default: "https://ru.1forma.ru"
+      width:
+        description: "Window width"
+        required: false
+        default: 1600
+      height:
+        description: "Window height"
+        required: false
+        default: 1000
+
+jobs:
+  build-windows:
+    name: ${{ inputs.title }} (windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-msvc
+
+      - name: Setup Node.js Environment
+        uses: ./.github/actions/setup-env
+        with:
+          mode: build
+
+      - name: Build CLI
+        run: pnpm run cli:build
+
+      - name: Build 1Forma MSI
+        shell: pwsh
+        run: |
+          $args = "${{ inputs.url }}", "--name", "${{ inputs.title }}"
+          $args += "--width", "${{ inputs.width }}"
+          $args += "--height", "${{ inputs.height }}"
+          $args += "--multi-window"
+          $args += "--targets", "x64"
+          $args += "--inject", "projects/ru.1forma.ru/same-window-routes.js"
+
+          node dist/cli.js $args
+
+          New-Item -Path "output\windows" -ItemType Directory -Force | Out-Null
+
+          $projectRootMsi = "${{ inputs.title }}.msi"
+          $legacyProjectRootMsi = "${{ inputs.name }}.msi"
+          $destination = "output\windows\${{ inputs.title }}_x64.msi"
+
+          if (Test-Path $projectRootMsi) {
+            Move-Item -Path $projectRootMsi -Destination $destination
+          } elseif (Test-Path $legacyProjectRootMsi) {
+            Move-Item -Path $legacyProjectRootMsi -Destination $destination
+          } else {
+            $msiFiles = Get-ChildItem -Path "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\msi\*.msi" -ErrorAction SilentlyContinue
+            if (-not $msiFiles) {
+              $msiFiles = Get-ChildItem -Path "src-tauri\target\release\bundle\msi\*.msi" -ErrorAction SilentlyContinue
+            }
+
+            if ($msiFiles) {
+              Move-Item -Path $msiFiles[0].FullName -Destination $destination
+            } else {
+              Write-Error "No MSI files found in expected locations"
+              Write-Host "Searched paths:"
+              Write-Host "  - $projectRootMsi (project root)"
+              Write-Host "  - $legacyProjectRootMsi (project root)"
+              Write-Host "  - src-tauri\target\x86_64-pc-windows-msvc\release\bundle\msi\"
+              Write-Host "  - src-tauri\target\release\bundle\msi\"
+              exit 1
+            }
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: 1forma-windows
+          path: output/windows/*.msi
+          retention-days: 3

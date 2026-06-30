@@ -1,0 +1,15 @@
+{
+  "name": "1forma",
+  "url": "https://1forma.ru",
+  "platform": "macos",
+  "window": {
+    "width": 1600,
+    "height": 1000,
+    "hideTitleBar": false
+  },
+  "notes": [
+    "Use a wide desktop viewport to preserve site layout",
+    "Keep the standard macOS title bar visible",
+    "If needed, increase width to 1800+ before testing"
+  ]
+}
