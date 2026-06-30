@@ -36,6 +36,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -53,7 +55,8 @@ jobs:
       - name: Build 1Forma MSI
         shell: pwsh
         run: |
-          $args = "${{ inputs.url }}", "--name", "${{ inputs.title }}"
+          $args = "${{ inputs.url }}", "--name", "${{ inputs.name }}"
+          $args += "--title", "${{ inputs.title }}"
           $args += "--width", "${{ inputs.width }}"
           $args += "--height", "${{ inputs.height }}"
           $args += "--multi-window"
