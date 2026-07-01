@@ -42,9 +42,11 @@
 
 Ключевые файлы:
 
-- `build/1forma.app` — результат app-only сборки;
-- `dist/1forma.dmg` — итоговый DMG;
+- `build/.staging/1forma.app` — промежуточный результат app-only сборки;
+- `dist/Первая Форма.app` — итоговый macOS app после postprocess;
+- `dist/Первая Форма.dmg` — итоговый DMG;
 - `docs/github-actions-multiplatform-builds.md` — схема сборок macOS, Windows и Linux на GitHub-hosted runners;
+- `docs/github-cli-github-actions-guide.md` — практический гайд по `gh`, Actions и запуску workflow из терминала;
 - `.github/workflows/ru-1forma-windows.yml` — ручная сборка Windows MSI для `ru.1forma.ru`;
 - `scripts/rebuild-local.sh` — локальная пересборка `.app`, опционально с `--install` и `--dmg`;
 - `scripts/docker-check.sh` — Docker-проверка JS-синтаксиса без macOS app build;
@@ -66,6 +68,12 @@ scripts/rebuild-local.sh --install
 # Пересобрать .app и затем упаковать DMG
 scripts/rebuild-local.sh --dmg
 
+# Пересобрать .app и упаковать DMG, автоматически добрав недостающий dist/cli.js
+scripts/rebuild-local.sh --dmg --install
+
+# Проверить, что дерево чистое, запустить Windows workflow и открыть live log
+scripts/run-windows-gh.sh
+
 # Собрать Docker image для легких проверок
 scripts/docker-check.sh --build
 
@@ -81,8 +89,8 @@ scripts/docker-check.sh
 
 Логика:
 
-- `scripts/preflight-notarization.sh` проверяет наличие `build/1forma.app`, `dmgbuild`, `xcrun notarytool` и файла ключа;
-- `scripts/notarize-app.sh` отправляет zip с `build/1forma.app` через `notarytool submit --key --key-id --issuer`;
+- `scripts/preflight-notarization.sh` проверяет наличие `build/.staging/1forma.app`, `dmgbuild`, `xcrun notarytool` и файла ключа;
+- `scripts/notarize-app.sh` отправляет zip с `build/.staging/1forma.app` через `notarytool submit --key --key-id --issuer`;
 - значения `key id` и `issuer` синхронизированы с текущим Electron CI-процессом.
 
 ## Внутренняя навигация

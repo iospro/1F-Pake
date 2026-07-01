@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP_PATH="$ROOT/build/1forma.app"
+APP_PATH="$ROOT/build/.staging/1forma.app"
 DMGBUILD_BIN="$HOME/Library/Python/3.12/bin/dmgbuild"
 NOTARY_KEY_PATH="/Users/malex/Work/1Forma/CI/Сборка Electron/AuthKey_A8R92JBBQB.p8"
 NOTARY_KEY_ID="A8R92JBBQB"

@@ -10,7 +10,7 @@ Usage:
 
 Options:
   --install   Allow build-new.sh to run pnpm install / cli:build when local deps are missing.
-  --dmg       Package dist/1forma.dmg after the .app rebuild.
+  --dmg       Package dist/Первая Форма.dmg after the .app rebuild.
   -h, --help  Show this help.
 
 Examples:
@@ -45,6 +45,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 cd "$ROOT"
+
+if [ "$ALLOW_INSTALL" = "0" ] && { [ ! -d "../../node_modules" ] || [ ! -f "../../dist/cli.js" ]; }; then
+  echo "[rebuild-local] bootstrapping pake-cli because local bundle or dependencies are missing"
+  ALLOW_INSTALL=1
+fi
 
 echo "[rebuild-local] project: $ROOT"
 echo "[rebuild-local] rebuilding macOS app"

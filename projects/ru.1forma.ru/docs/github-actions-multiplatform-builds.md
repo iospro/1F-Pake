@@ -161,3 +161,21 @@ git push origin v0.1.0
 8. Добавить сборку по тегу и публикацию GitHub Release.
 
 До прохождения проверки на реальных Windows и Ubuntu артефакты следует считать тестовыми, а не релизными.
+
+## Current working commands
+
+For this project the practical commands are:
+
+```bash
+# macOS DMG build
+cd /Users/malex/Work/Pake/pake-cli/projects/ru.1forma.ru
+bash ./scripts/rebuild-local.sh --dmg
+
+# macOS DMG build with bootstrap if local CLI bundle is missing
+bash ./scripts/rebuild-local.sh --install --dmg
+
+# Windows MSI build from the 1f branch via GitHub Actions
+bash ./scripts/run-windows-gh.sh
+```
+
+The Windows helper script refuses to run if the git tree is dirty, because the workflow should build a committed state only.

@@ -359,7 +359,7 @@ ALLOW_NETWORK_INSTALL=1 bash build-new.sh
 
 Expected outputs:
 
-- `build/Первая Форма.app`
+- `build/.staging/1forma.app`
 - `dist/Первая Форма.app`
 
 ## Final Recommendation

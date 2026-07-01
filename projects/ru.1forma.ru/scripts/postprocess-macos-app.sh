@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SOURCE_APP_PATH="$ROOT/build/1forma.app"
+SOURCE_APP_PATH="$ROOT/build/.staging/1forma.app"
 TARGET_APP_PATH="$ROOT/build/Первая Форма.app"
 APP_PATH="$TARGET_APP_PATH"
 PLIST_PATH="$APP_PATH/Contents/Info.plist"
