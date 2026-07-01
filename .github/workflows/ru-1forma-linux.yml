@@ -1,0 +1,88 @@
+name: Build 1Forma Debian Package
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.26.2"
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "App slug"
+        required: true
+        default: "1forma"
+      title:
+        description: "App title"
+        required: true
+        default: "Первая Форма"
+      url:
+        description: "App URL"
+        required: true
+        default: "https://ru.1forma.ru"
+      width:
+        description: "Window width"
+        required: false
+        default: 1600
+      height:
+        description: "Window height"
+        required: false
+        default: 1000
+
+jobs:
+  build-linux:
+    name: ${{ inputs.title }} (linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Setup Node.js Environment
+        uses: ./.github/actions/setup-env
+        with:
+          mode: build
+
+      - name: Build CLI
+        run: pnpm run cli:build
+
+      - name: Build 1Forma DEB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          args=(
+            "${{ inputs.url }}"
+            "--name" "${{ inputs.name }}"
+            "--title" "${{ inputs.title }}"
+            "--width" "${{ inputs.width }}"
+            "--height" "${{ inputs.height }}"
+            "--targets" "deb"
+          )
+
+          node dist/cli.js "${args[@]}"
+
+          mkdir -p output/linux
+          arch="$(dpkg --print-architecture)"
+          destination="output/linux/${{ inputs.title }}_${arch}.deb"
+
+          if [ -f "${{ inputs.name }}.deb" ]; then
+            mv "${{ inputs.name }}.deb" "$destination"
+          elif ls src-tauri/target/release/bundle/deb/*.deb >/dev/null 2>&1; then
+            mv src-tauri/target/release/bundle/deb/*.deb "$destination"
+          else
+            echo "No DEB files found in expected locations" >&2
+            find . -name "*.deb" -type f >&2
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: 1forma-linux
+          path: output/linux/*.deb
+          retention-days: 3

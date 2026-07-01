@@ -74,6 +74,9 @@ scripts/rebuild-local.sh --dmg --install
 # Проверить, что дерево чистое, запустить Windows workflow и открыть live log
 scripts/run-windows-gh.sh
 
+# Проверить, что дерево чистое, запустить Linux workflow и открыть live log
+scripts/run-linux-gh.sh
+
 # Собрать Docker image для легких проверок
 scripts/docker-check.sh --build
 

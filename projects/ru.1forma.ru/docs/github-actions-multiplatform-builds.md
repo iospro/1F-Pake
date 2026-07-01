@@ -20,7 +20,7 @@ GitHub Actions позволяет запускать сборку на врем�
 | --- | --- | --- | --- |
 | macOS | `macos-latest` | `.dmg` | Установка на macOS |
 | Windows | `windows-latest` | `.msi` | Установка на Windows x64 |
-| Linux | `ubuntu-latest` | `.deb` | Debian, Ubuntu и совместимые системы |
+| Linux | `ubuntu-24.04` | `.deb` | Debian, Ubuntu и совместимые системы |
 | Linux | `ubuntu-latest` | `.AppImage` | Переносимый пакет для разных Linux-дистрибутивов |
 
 Pake также принимает Linux targets `rpm` и `zst`, но текущая проверенная конфигурация `pake-cli` по умолчанию выпускает `deb` и `appimage`. Поддержку `.rpm` и `.zst` следует добавлять и проверять отдельно.
@@ -98,6 +98,17 @@ git push origin v0.1.0
 ```
 
 После успешной сборки `.dmg`, `.msi`, `.deb` и `.AppImage` прикладываются к GitHub Release.
+
+## 1Forma Linux `.deb`
+
+Для `ru.1forma.ru` мы держим отдельный Linux-only путь под Ubuntu-серверы:
+
+- workflow: `.github/workflows/ru-1forma-linux.yml`
+- artifact: `1forma-linux`
+- package: `Первая Форма_amd64.deb`
+- terminal helper: `scripts/run-linux-gh.sh`
+
+Этот путь собирает только Debian package и не производит AppImage.
 
 ## Доступ к GitHub
 
