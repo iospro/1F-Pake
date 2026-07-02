@@ -191,3 +191,29 @@ The important rules are:
 - when a deleted active account leaves another account behind, the next remaining account becomes active.
 
 These rules explain why two buttons that look similar can behave differently in practice: one is a static UI trigger, the other is a stateful command that has to survive bootstrap timing, account-store refresh, and webview navigation.
+
+## UI Machinery Rules
+
+The account manager and empty-state flow are fragile because they cross three layers at once:
+
+1. Rust window/navigation logic.
+2. JS panel rendering and click handling.
+3. Generated local web assets such as `empty-account.html`.
+
+Keep these invariants in place:
+
+- Rust chooses the first URL and the empty-state fallback;
+- JS never invents a fallback URL from the current site location;
+- the confirm overlay clears its visible state immediately when the user confirms;
+- the account list re-renders from the latest native snapshot after each write;
+- the last-account path must still end on a valid local asset, not a stale host page;
+- any new Rust command used by the account manager needs its own `src-tauri/permissions/*.toml` file;
+- if a command succeeds but the screen does not change, check the UI state transition, not the ACL first;
+- if the screen changes but the wrong page stays visible, check the Rust URL/navigation path before touching CSS or the site itself.
+
+The main anti-patterns are:
+
+- resolving local pages relative to a remote host;
+- using `window.confirm()` for destructive UI when the rest of the flow uses a custom overlay;
+- assuming the webview content area will resize itself because a toolbar was added in JS;
+- mixing startup ownership between Rust and JS.

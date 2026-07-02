@@ -113,6 +113,22 @@ scripts/docker-check.sh
 - JS не должен дублировать этот стартовый выбор URL;
 - кнопки внутри overlay работают только через явный DOM/bridge contract, а не через скрытый фоновый state.
 
+### Fragile UI Notes
+
+Это не обычная веб-страница поверх окна, а связка из трёх хрупких частей:
+
+- native Rust стартует и решает, какой URL вообще открыть;
+- injected JS рисует overlay и ловит клики;
+- локальная `empty-account.html` нужна как минимальный fallback, когда доменов нет.
+
+Не трогать без нужды:
+
+- startup URL в Rust;
+- `show_empty_account_state` путь;
+- confirm overlay flow;
+- split list/add modes;
+- payload shapes для account commands.
+
 ## Камера и микрофон
 
 Для WebView-пермишенов macOS сборка должна идти с флагами:

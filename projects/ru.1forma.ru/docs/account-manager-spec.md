@@ -87,6 +87,30 @@ The button logic only works reliably when the panel is mounted before it is show
 
 This is why an open/close button can appear visually correct but still fail to react if the show/hide sequence is inverted.
 
+## Fragile UI Machinery
+
+This feature is intentionally brittle unless the layers stay separated.
+
+The real rules are:
+
+1. Rust owns the durable state and the actual startup URL.
+2. JS owns the account-manager panel, button state, and local click handling.
+3. JS may request a native state change, but it must not guess the startup URL on its own.
+4. The empty-account screen is a local runtime asset, not a site page and not a generic blank shell.
+5. The confirm overlay must disappear from local UI state immediately after the user confirms deletion, even if the native delete request is still in flight.
+6. If the last account is removed, the main window must be navigated back to the empty-account asset before the user is left staring at a half-dead leftover page.
+7. The account list must be refreshed from native snapshot data after every write, not from stale DOM state.
+
+The following changes are high risk and usually break other parts of the flow:
+
+- replacing Rust startup URL selection with JS-side redirects;
+- using `about:blank` as the empty state;
+- resolving the empty-state URL relative to the current site URL;
+- showing the confirm overlay without re-rendering the panel first;
+- hiding the panel before the native delete response has been processed;
+- adding new account commands without a matching `src-tauri/permissions/*.toml`;
+- moving button logic into the page site instead of the injected overlay shell.
+
 ## Account Model
 
 Each account should store at minimum:
@@ -248,6 +272,21 @@ Rules:
 - after deleting the last account, JS should ask Rust to navigate the current main window to the local empty-account page instead of trying to resolve the URL itself.
 
 This makes the webview behave like a controlled native surface instead of a page that guesses its own startup URL.
+
+## Empty-State Rules
+
+The empty state is not an error screen.
+
+It must behave like a real minimal shell:
+
+- it loads as a local asset;
+- it stays visible when there are no accounts;
+- its only action is to open the account manager overlay;
+- it must not try to guess a site host;
+- it must not depend on the current domain being available;
+- if the user removes the last account, the app returns to this page immediately.
+
+If this page is missing or not reachable, the whole app appears to “half work” because the toolbar and the account panel still exist but the main content area has no correct target to paint.
 
 ## Startup Rule
 

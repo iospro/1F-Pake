@@ -54,6 +54,13 @@
     }
   }
 
+  function getEmptyAccountStateHref() {
+    const isWindowsLike = /Windows/i.test(navigator.userAgent) || /Android/i.test(navigator.userAgent);
+    return isWindowsLike
+      ? "https://tauri.localhost/empty-account.html"
+      : "tauri://localhost/empty-account.html";
+  }
+
   function updateSubmitState(form) {
     const titleInput = form.querySelector('input[name="account-title"]');
     const hostInput = form.querySelector('input[name="account-host"]');
@@ -159,13 +166,19 @@
     const accountId = deletePendingAccountId;
     if (!accountId) return;
     deletePendingAccountId = null;
+    render();
     const wasActive = snapshot.active_account_id === accountId;
     try {
       await requestNative(DELETE_COMMAND, { params: { id: accountId } });
       snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
       if (!hasAccounts()) {
         mode = "add";
-        await requestNative("show_empty_account_state");
+        try {
+          await requestNative("show_empty_account_state");
+        } catch (error) {
+          console.warn("show_empty_account_state failed, falling back to direct navigation", error);
+          window.location.replace(getEmptyAccountStateHref());
+        }
         return;
       }
 
