@@ -60,6 +60,33 @@ The account manager screen must support:
 
 Add a button on the right side of the top bar that opens the account manager screen from anywhere in the app.
 
+## Rendering and Click Contract
+
+The account manager UI is split into two visible modes:
+
+1. account list mode;
+2. add-account mode.
+
+The click contract is strict:
+
+- the list mode shows existing accounts, the active state, and delete actions;
+- the add mode shows only the add form and its submit button;
+- clicking `Добавить` from the list mode must switch into add mode, not create a separate screen;
+- clicking `К списку` is no longer part of the flow;
+- deleting an account must open the in-UI confirm overlay first;
+- clicking the delete confirm button must call the native delete path, not `window.confirm()`;
+- if the deleted account was active and other accounts remain, the first remaining account becomes active;
+- if the deleted account was the last one, the app must return to the add flow and the main webview must also fall back to the empty-account page.
+
+The button logic only works reliably when the panel is mounted before it is shown. The practical ordering is:
+
+1. build or update the DOM;
+2. attach listeners;
+3. set `visible = true`;
+4. then add the visible class.
+
+This is why an open/close button can appear visually correct but still fail to react if the show/hide sequence is inverted.
+
 ## Account Model
 
 Each account should store at minimum:
@@ -207,6 +234,20 @@ Current contract:
 
 This contract exists specifically to avoid startup races on macOS and to keep bridge initialization deterministic.
 
+## Webview Startup Rules
+
+The startup webview URL is owned by Rust.
+
+Rules:
+
+- empty store => load `empty-account.html`;
+- active account exists => inject its `base_url` into the main window from Rust;
+- do not let JS also rewrite the startup URL if Rust already selected it;
+- if the user switches accounts, the selected account must be persisted natively before the webview navigates;
+- if the account list becomes empty, the app should not leave the user staring at a blank shell.
+
+This makes the webview behave like a controlled native surface instead of a page that guesses its own startup URL.
+
 ## Startup Rule
 
 The startup URL for the main `WebviewWindow` must be chosen in Rust before the window is built.
@@ -335,6 +376,18 @@ With this split:
 10. JS redraws the screen from the new snapshot.
 
 The key property is that the UI is always derived from native state, not the other way around.
+
+## Button Payload Rules
+
+The account manager buttons only work when the JS payload matches the Rust command signature exactly.
+
+Current shape:
+
+- `upsert_account` receives `{ params: { title, host } }`;
+- `set_active_account` receives `{ params: { id } }`;
+- `delete_account` receives `{ params: { id } }`.
+
+If the payload shape drifts, the UI may still click and animate, but Rust will reject the command and the screen will look broken even though the button itself is wired.
 
 ## Event Map
 

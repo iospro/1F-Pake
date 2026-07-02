@@ -27,6 +27,8 @@
     return Boolean(isMac && hideTitleBar);
   }
 
+  window.__PAKE_EMPTY_ACCOUNT_STATE_URL__ = "empty-account.html";
+
   function getRetinaDisplaySize() {
     const scale = Math.max(1, Math.round(window.devicePixelRatio || 1));
     return {
@@ -359,11 +361,18 @@
       .trim();
   }
 
+  function isPlaceholderPageTitle(title) {
+    const normalized = normalizeTabTitle(title);
+    return normalized === "1F" || normalized === "Первая Форма";
+  }
+
   function getCurrentPageTitle() {
     const metaTitle = document.querySelector(
       'meta[property="og:title"], meta[name="twitter:title"], meta[name="title"]',
     )?.getAttribute("content");
-    return normalizeTabTitle(metaTitle || document.title || "");
+    const nextTitle = normalizeTabTitle(metaTitle || document.title || "");
+    if (!nextTitle || isPlaceholderPageTitle(nextTitle)) return "";
+    return nextTitle;
   }
 
   function getTabDisplayTitle(tab) {
@@ -430,8 +439,17 @@
       }
 
       body {
-        padding-top: ${TITLEBAR_HEIGHT}px !important;
         box-sizing: border-box;
+        margin: 0;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      #${TITLEBAR_ID}-spacer {
+        width: 100%;
+        height: ${TITLEBAR_HEIGHT}px;
+        flex: 0 0 ${TITLEBAR_HEIGHT}px;
+        pointer-events: none;
       }
 
       #${TITLEBAR_ID} {
@@ -472,6 +490,11 @@
         flex: 0 1 auto;
         max-width: 100%;
         justify-content: center;
+        font-weight: 700;
+      }
+
+      #${TITLEBAR_ID} .pake-title-group[data-empty="1"] {
+        display: none !important;
       }
 
       #${TITLEBAR_ID} .pake-tabs {
@@ -587,6 +610,10 @@
         flex-shrink: 0;
       }
 
+      #${TITLEBAR_ID} .pake-add-tab[hidden] {
+        display: none !important;
+      }
+
       #${TITLEBAR_ID} .pake-tab-close {
         position: absolute;
         top: 50%;
@@ -625,6 +652,48 @@
         font-size: 14px;
         font-weight: 700;
       }
+
+      #pake-empty-account-placeholder {
+        display: none;
+        box-sizing: border-box;
+        min-height: calc(100vh - ${TITLEBAR_HEIGHT}px);
+        width: 100%;
+        padding: 48px 24px;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: #0f172a;
+      }
+
+      #pake-empty-account-placeholder.is-visible {
+        display: grid;
+      }
+
+      #pake-empty-account-placeholder .pake-empty-account-card {
+        display: grid;
+        gap: 16px;
+        justify-items: center;
+        max-width: 420px;
+      }
+
+      #pake-empty-account-placeholder .pake-empty-account-title {
+        font-size: 28px;
+        line-height: 1.1;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+
+      #pake-empty-account-placeholder .pake-empty-account-button {
+        appearance: none;
+        border: 0;
+        border-radius: 14px;
+        padding: 12px 18px;
+        background: #4a7dff;
+        color: #fff;
+        font: 700 15px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        cursor: pointer;
+        box-shadow: 0 10px 30px rgba(74, 125, 255, 0.28);
+      }
     `;
     document.head.appendChild(style);
   }
@@ -648,8 +717,18 @@
   function ensureTitlebar() {
     if (window.__PAKE_CHILD_TAB__) return;
     if (!isMacOverlayTitlebarEnabled()) return;
+    if (!document.documentElement) return;
 
     ensureTitlebarStyles();
+
+    const spacerId = `${TITLEBAR_ID}-spacer`;
+    let spacer = document.getElementById(spacerId);
+    if (!spacer && document.body) {
+      spacer = document.createElement("div");
+      spacer.id = spacerId;
+      spacer.setAttribute("aria-hidden", "true");
+      document.body.prepend(spacer);
+    }
 
     let titlebar = document.getElementById(TITLEBAR_ID);
     if (!titlebar) {
@@ -660,6 +739,7 @@
       const titleGroup = document.createElement("div");
       titleGroup.className = "pake-title-group";
       titleGroup.textContent = "";
+      titleGroup.setAttribute("data-empty", "1");
 
       const tabsContainer = document.createElement("div");
       tabsContainer.className = "pake-tabs";
@@ -696,6 +776,7 @@
       addButton.title = "Новая вкладка";
       addButton.setAttribute("aria-label", "Новая вкладка");
       addButton.textContent = "+";
+      addButton.hidden = true;
       addButton.addEventListener("click", async () => {
         try {
           const tab = await requestTabsNative("open_tab", { url: window.location.href });
@@ -715,7 +796,21 @@
 
     updateHistoryButtons();
     renderTabs();
-    updateTitleDisplay();
+    if (document.readyState !== "loading") {
+      updateTitleDisplay();
+    }
+  }
+
+  function isEmptyAccountsPage() {
+    return window.location.pathname.endsWith("/empty-account.html");
+  }
+
+  function ensureEmptyAccountsPlaceholder() {
+    if (window.__PAKE_CHILD_TAB__) return;
+    if (!isMacOverlayTitlebarEnabled()) return;
+    if (!document.body) return;
+    const placeholder = document.getElementById("pake-empty-account-placeholder");
+    if (placeholder) placeholder.remove();
   }
 
   let tabsSnapshot = [];
@@ -863,10 +958,36 @@
     const titlebar = document.getElementById(TITLEBAR_ID);
     if (!titlebar) return;
     const titleGroup = titlebar.querySelector(".pake-title-group");
-    const hasTabs = tabsSnapshot.length > 1;
     if (!titleGroup) return;
-    titleGroup.style.display = hasTabs ? "none" : "flex";
-    titleGroup.textContent = hasTabs ? "" : getCurrentPageTitle();
+    const nextTitle = getCurrentPageTitle();
+    if (!nextTitle) {
+      titleGroup.textContent = "";
+      titleGroup.setAttribute("data-empty", "1");
+      titleGroup.style.display = "none";
+      return;
+    }
+    titleGroup.removeAttribute("data-empty");
+    titleGroup.style.display = "flex";
+    titleGroup.textContent = nextTitle;
+  }
+
+  function observePageTitle() {
+    const update = () => updateTitleDisplay();
+    const titleElement = document.querySelector("title");
+    if (!titleElement) {
+      update();
+      return;
+    }
+
+    const observer = new MutationObserver(update);
+    observer.observe(titleElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    window.addEventListener("pageshow", update);
+    window.addEventListener("load", update);
   }
 
   async function refreshTabsSnapshot() {
@@ -986,18 +1107,29 @@
   window.addEventListener("pageshow", () => {
     ensureHistoryState();
     ensureTitlebar();
+    ensureEmptyAccountsPlaceholder();
+    syncDockBadgeFromTitle();
+  });
+
+  window.addEventListener("DOMContentLoaded", () => {
+    ensureHistoryState();
+    ensureTitlebar();
+    ensureEmptyAccountsPlaceholder();
     syncDockBadgeFromTitle();
   });
 
   window.addEventListener("load", () => {
     ensureHistoryState();
     ensureTitlebar();
+    ensureEmptyAccountsPlaceholder();
     syncDockBadgeFromTitle();
   });
 
   ensureHistoryState();
   patchRetinaDisplayMedia();
   ensureTitlebar();
+  ensureEmptyAccountsPlaceholder();
   observeTitleBadge();
+  observePageTitle();
   observeTickersRequests();
 })();

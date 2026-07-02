@@ -155,3 +155,39 @@ Current rule:
 - do not combine a page-load `show()` hook with a second startup redirect unless you really need both for a controlled experiment.
 
 This is the main reason the account start path was unstable even when the account store itself was reading correctly.
+
+## Webview Loading Contract
+
+When the app starts, Rust must decide the first URL before the main `WebviewWindow` is built.
+
+The current contract is:
+
+1. If the native account store is empty, the main window loads the local `empty-account.html` page.
+2. If there is an active account, Rust injects that account's `base_url` into the main window.
+3. Rust does not hand off startup URL selection to JS.
+4. JS does not also redirect the main page on startup if Rust already picked the URL.
+5. The empty state is a real local HTML page, not `about:blank` and not a placeholder shell that depends on later JS rerendering.
+
+This matters because a blank or half-initialized webview can hide the toolbar, fail to paint the account manager button, or create a visible white flash when the page later gets replaced.
+
+## Button Contract
+
+The button path in this app is intentionally boring:
+
+1. DOM button click.
+2. JS handler.
+3. Bridge call or DOM event.
+4. Native handler or overlay state update.
+
+The important rules are:
+
+- the account manager button in the empty state should call `window.__PAKE_OPEN_ACCOUNT_MANAGER__()` when available;
+- if the bridge function is not present yet, it should dispatch the `pake:open-account-manager` event instead of silently doing nothing;
+- the account manager panel should `render()` first and only then be marked visible, otherwise the first open can race with DOM creation;
+- the add form must call `upsert_account` with `{ params: { title, host } }`;
+- the activate flow must call `set_active_account` and then navigate the current webview to the selected account URL;
+- delete confirmation is an in-UI overlay, not `window.confirm()`;
+- when the last account is deleted, the app should return to the empty-account page so there is still something visible in the webview;
+- when a deleted active account leaves another account behind, the next remaining account becomes active.
+
+These rules explain why two buttons that look similar can behave differently in practice: one is a static UI trigger, the other is a stateful command that has to survive bootstrap timing, account-store refresh, and webview navigation.

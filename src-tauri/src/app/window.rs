@@ -157,7 +157,9 @@ fn build_window_with_label(
         }
     };
 
-    let start_url = if label == "pake" {
+    let start_url = if !account_store::has_accounts(app) {
+        WebviewUrl::App(PathBuf::from("empty-account.html"))
+    } else if label == "pake" {
         account_store::active_account_base_url(app)
             .and_then(|value| Url::from_str(&value).ok())
             .map(WebviewUrl::External)

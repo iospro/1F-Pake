@@ -217,10 +217,19 @@ pub fn emit_current_accounts_snapshot(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub fn has_accounts(app: &AppHandle) -> bool {
+    let tauri_config = app.config().clone();
+    load_store(app, &tauri_config)
+        .map(|store| !store.accounts.is_empty())
+        .unwrap_or(false)
+}
+
 pub fn active_account_base_url(app: &AppHandle) -> Option<String> {
-    const FALLBACK_ACTIVE_URL: &str = "https://ru.1forma.ru";
     let tauri_config = app.config().clone();
     let store = load_store(app, &tauri_config).ok()?;
+    if store.accounts.is_empty() {
+        return None;
+    }
     let active_id = store.active_account_id.as_deref();
     let account = store
         .accounts
@@ -230,8 +239,7 @@ pub fn active_account_base_url(app: &AppHandle) -> Option<String> {
         .or_else(|| store.accounts.first())?;
     let candidate = account.base_url.trim();
     if candidate.is_empty() {
-        eprintln!("[Pake] active account base_url empty, using fallback {FALLBACK_ACTIVE_URL}");
-        return Some(FALLBACK_ACTIVE_URL.to_string());
+        return None;
     }
     if candidate.starts_with("http://") || candidate.starts_with("https://") {
         eprintln!("[Pake] active account base_url loaded: {candidate}");

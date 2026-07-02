@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Первая Форма</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+      color: #0f172a;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+    }
+
+    .pake-empty-account-card {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      transform: translateY(-40px);
+    }
+
+    .pake-empty-account-title {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.1;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .pake-empty-account-button {
+      appearance: none;
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 18px;
+      background: #4a7dff;
+      color: #fff;
+      font: 700 15px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      cursor: pointer;
+      box-shadow: 0 10px 30px rgba(74, 125, 255, 0.28);
+    }
+
+  </style>
+</head>
+<body>
+  <div class="pake-empty-account-card">
+    <button type="button" class="pake-empty-account-button" id="pake-empty-account-button">Добавить домен</button>
+  </div>
+  <script>
+    const button = document.getElementById("pake-empty-account-button");
+
+    button?.addEventListener("click", () => {
+      if (typeof window.__PAKE_OPEN_ACCOUNT_MANAGER__ === "function") {
+        window.__PAKE_OPEN_ACCOUNT_MANAGER__();
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("pake:open-account-manager"));
+    });
+  </script>
+</body>
+</html>

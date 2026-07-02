@@ -8,6 +8,7 @@
   let snapshot = { active_account_id: null, accounts: [] };
   let visible = false;
   let mode = "list";
+  let deletePendingAccountId = null;
 
   function requestNative(action, params = {}) {
     const invoke = window.__TAURI__?.core?.invoke;
@@ -68,19 +69,24 @@
   }
 
   function openPanel() {
-    const panel = document.getElementById(PANEL_ID);
-    if (!panel) return;
-    panel.classList.add("is-visible");
     visible = true;
     mode = hasAccounts() ? "list" : "add";
     render();
+    const panel = document.getElementById(PANEL_ID);
+    if (panel) {
+      panel.classList.add("is-visible");
+    }
   }
+
+  window.__PAKE_OPEN_ACCOUNT_MANAGER__ = openPanel;
+  window.addEventListener("pake:open-account-manager", openPanel);
 
   function closePanel() {
     const panel = document.getElementById(PANEL_ID);
     if (!panel) return;
     panel.classList.remove("is-visible");
     visible = false;
+    deletePendingAccountId = null;
     render();
   }
 
@@ -116,7 +122,8 @@
         params: { title, host },
       });
       if (payload?.id) {
-        await requestNative(SET_ACTIVE_COMMAND, { params: { id: payload.id } }).catch(() => {});
+        await activateAccount(payload.id);
+        return;
       }
       snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
       mode = "list";
@@ -144,25 +151,42 @@
   }
 
   async function deleteAccount(accountId) {
-    const ok = window.confirm("Удалить учётку?");
-    if (!ok) return;
-    const wasActive = snapshot.active_account_id === accountId;
-    await requestNative(DELETE_COMMAND, { params: { id: accountId } });
-    snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
-    if (!hasAccounts()) {
-      mode = "add";
-      render();
-      return;
-    }
-
-    mode = "list";
+    deletePendingAccountId = accountId;
     render();
+  }
 
-    if (wasActive) {
-      const nextAccount = getAccounts()[0] || null;
-      if (nextAccount?.id) {
-        await activateAccount(nextAccount.id);
+  async function confirmDeleteAccount() {
+    const accountId = deletePendingAccountId;
+    if (!accountId) return;
+    deletePendingAccountId = null;
+    const wasActive = snapshot.active_account_id === accountId;
+    try {
+      await requestNative(DELETE_COMMAND, { params: { id: accountId } });
+      snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
+      if (!hasAccounts()) {
+        mode = "add";
+        openPanel();
+        const emptyStateUrl = window.__PAKE_EMPTY_ACCOUNT_STATE_URL__;
+        if (typeof emptyStateUrl === "string" && emptyStateUrl) {
+          const resolvedEmptyUrl = new URL(emptyStateUrl, window.location.href).href;
+          if (window.location.href !== resolvedEmptyUrl) {
+            window.location.href = resolvedEmptyUrl;
+          }
+        }
+        return;
       }
+
+      mode = "list";
+      render();
+
+      if (wasActive) {
+        const nextAccount = getAccounts()[0] || null;
+        if (nextAccount?.id) {
+          await activateAccount(nextAccount.id);
+        }
+      }
+    } catch (error) {
+      console.error("delete_account failed", error);
     }
   }
 
@@ -208,13 +232,22 @@
       useButton.className = "pake-account-use";
       useButton.textContent = account.active ? "Активна" : "Выбрать";
       useButton.disabled = account.active;
-      useButton.addEventListener("click", () => activateAccount(account.id));
+      useButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void activateAccount(account.id);
+      });
 
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "pake-account-delete";
       deleteButton.textContent = "Удалить";
-      deleteButton.addEventListener("click", () => deleteAccount(account.id));
+      deleteButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        console.info("[Pake] delete_account click", { id: account.id, active: account.active });
+        void deleteAccount(account.id);
+      });
 
       actions.appendChild(useButton);
       actions.appendChild(deleteButton);
@@ -228,13 +261,11 @@
     const form = panel.querySelector(".pake-accounts-form");
     const list = panel.querySelector(".pake-accounts-list");
     const addToggle = panel.querySelector(".pake-accounts-add-toggle");
-    const backButton = panel.querySelector(".pake-accounts-back");
 
     const showAdd = mode === "add" || !hasAccounts();
     form.hidden = !showAdd && hasAccounts();
     list.hidden = showAdd;
     if (addToggle) addToggle.hidden = showAdd || !hasAccounts();
-    if (backButton) backButton.hidden = !(showAdd && hasAccounts());
 
     if (form) updateSubmitState(form);
   }
@@ -247,15 +278,14 @@
       panel = document.createElement("div");
       panel.id = PANEL_ID;
       panel.innerHTML = `
-        <div class="pake-accounts-card" role="dialog" aria-modal="true" aria-label="Учетки">
+        <div class="pake-accounts-card" role="dialog" aria-modal="true" aria-label="Домены">
           <div class="pake-accounts-head">
-            <h2>Учетки</h2>
+            <h2>Домены</h2>
             <button type="button" class="pake-accounts-close">Закрыть</button>
           </div>
           <form class="pake-accounts-form">
             <div class="pake-accounts-form-head">
-              <div class="pake-accounts-form-title">Добавить учетку</div>
-              <button type="button" class="pake-accounts-back">К списку</button>
+              <div class="pake-accounts-form-title">Добавить домен</div>
             </div>
             <input name="account-title" type="text" placeholder="Название учетной записи" autocomplete="off" />
             <input name="account-host" type="text" placeholder="domain.example.com или https://domain.example.com" autocomplete="off" />
@@ -265,6 +295,15 @@
           <div class="pake-accounts-footer">
             <button type="button" class="pake-accounts-add-toggle">Добавить</button>
           </div>
+          <div class="pake-delete-confirm" hidden>
+            <div class="pake-delete-confirm-card" role="alertdialog" aria-modal="true" aria-label="Подтверждение удаления">
+              <div class="pake-delete-confirm-title">Удалить учётку?</div>
+              <div class="pake-delete-confirm-actions">
+                <button type="button" class="pake-delete-confirm-cancel">Отмена</button>
+                <button type="button" class="pake-delete-confirm-ok">Удалить</button>
+              </div>
+            </div>
+          </div>
         </div>
       `;
 
@@ -273,7 +312,13 @@
       });
       panel.querySelector(".pake-accounts-close")?.addEventListener("click", closePanel);
       panel.querySelector(".pake-accounts-add-toggle")?.addEventListener("click", () => setMode("add"));
-      panel.querySelector(".pake-accounts-back")?.addEventListener("click", () => setMode("list"));
+      panel.querySelector(".pake-delete-confirm-cancel")?.addEventListener("click", () => {
+        deletePendingAccountId = null;
+        render();
+      });
+      panel.querySelector(".pake-delete-confirm-ok")?.addEventListener("click", async () => {
+        await confirmDeleteAccount();
+      });
       panel.querySelector(".pake-accounts-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await submitAccount(event.currentTarget);
@@ -292,6 +337,12 @@
 
     panel.classList.toggle("has-accounts", hasAccounts());
     panel.classList.toggle("show-add", mode === "add" || !hasAccounts());
+    panel.classList.toggle("show-delete-confirm", Boolean(deletePendingAccountId));
+
+    const deleteConfirm = panel.querySelector(".pake-delete-confirm");
+    if (deleteConfirm) {
+      deleteConfirm.hidden = !deletePendingAccountId;
+    }
 
     renderList(panel, list);
     renderAdd(panel);
@@ -308,8 +359,8 @@
     const addButton = document.createElement("button");
     addButton.className = "pake-accounts-button";
     addButton.type = "button";
-    addButton.title = "Учетки";
-    addButton.setAttribute("aria-label", "Учетки");
+    addButton.title = "Домены";
+    addButton.setAttribute("aria-label", "Домены");
     addButton.textContent = "☰";
     addButton.addEventListener("click", () => {
       if (visible) {
@@ -369,8 +420,7 @@
         font-size: 22px;
       }
 
-      #${PANEL_ID} .pake-accounts-close,
-      #${PANEL_ID} .pake-accounts-back {
+      #${PANEL_ID} .pake-accounts-close {
         border: 0;
         border-radius: 10px;
         padding: 8px 12px;
@@ -419,6 +469,65 @@
         margin-top: 14px;
       }
 
+      #${PANEL_ID} .pake-delete-confirm {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 23, 42, 0.54);
+        backdrop-filter: blur(6px);
+        z-index: 3;
+      }
+
+      #${PANEL_ID} .pake-delete-confirm[hidden] {
+        display: none !important;
+      }
+
+      #${PANEL_ID} .pake-delete-confirm-card {
+        width: min(360px, calc(100vw - 40px));
+        border-radius: 18px;
+        background: #0f172a;
+        color: #f8fafc;
+        padding: 18px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+      }
+
+      #${PANEL_ID} .pake-delete-confirm-title {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      #${PANEL_ID} .pake-delete-confirm-text {
+        font-size: 14px;
+        opacity: 0.82;
+        margin-bottom: 16px;
+      }
+
+      #${PANEL_ID} .pake-delete-confirm-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      #${PANEL_ID} .pake-delete-confirm-actions button {
+        border: 0;
+        border-radius: 10px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+
+      #${PANEL_ID} .pake-delete-confirm-cancel {
+        background: rgba(255, 255, 255, 0.08);
+        color: inherit;
+      }
+
+      #${PANEL_ID} .pake-delete-confirm-ok {
+        background: rgba(248, 113, 113, 0.22);
+        color: inherit;
+      }
+
       #${PANEL_ID} .pake-accounts-add-toggle {
         border: 0;
         border-radius: 12px;
@@ -464,6 +573,8 @@
       #${PANEL_ID} .pake-account-actions {
         display: flex;
         gap: 8px;
+        position: relative;
+        z-index: 1;
       }
 
       #${PANEL_ID} .pake-account-actions button {
@@ -471,6 +582,9 @@
         border-radius: 10px;
         padding: 8px 12px;
         cursor: pointer;
+        position: relative;
+        z-index: 2;
+        pointer-events: auto;
       }
 
       #${PANEL_ID} .pake-account-use {
@@ -517,14 +631,16 @@
   }
 
   function waitForBootstrap() {
-    if (document.body && installButton()) {
+    if (document.body) {
+      installButton();
       bootstrap();
       return;
     }
     let attempts = 0;
     const timer = window.setInterval(() => {
       attempts += 1;
-      if (document.body && installButton()) {
+      if (document.body) {
+        installButton();
         window.clearInterval(timer);
         bootstrap();
       } else if (attempts >= 80) {
