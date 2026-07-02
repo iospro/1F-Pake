@@ -441,15 +441,9 @@
       body {
         box-sizing: border-box;
         margin: 0;
+        padding-top: ${TITLEBAR_HEIGHT}px;
         min-height: 100vh;
         overflow-x: hidden;
-      }
-
-      #${TITLEBAR_ID}-spacer {
-        width: 100%;
-        height: ${TITLEBAR_HEIGHT}px;
-        flex: 0 0 ${TITLEBAR_HEIGHT}px;
-        pointer-events: none;
       }
 
       #${TITLEBAR_ID} {
@@ -720,15 +714,6 @@
     if (!document.documentElement) return;
 
     ensureTitlebarStyles();
-
-    const spacerId = `${TITLEBAR_ID}-spacer`;
-    let spacer = document.getElementById(spacerId);
-    if (!spacer && document.body) {
-      spacer = document.createElement("div");
-      spacer.id = spacerId;
-      spacer.setAttribute("aria-hidden", "true");
-      document.body.prepend(spacer);
-    }
 
     let titlebar = document.getElementById(TITLEBAR_ID);
     if (!titlebar) {
