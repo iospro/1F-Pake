@@ -1,10 +1,10 @@
 // Menu functionality is only used on macOS
 #![cfg(target_os = "macos")]
 
-use crate::app::window::open_additional_window_safe;
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_opener::OpenerExt;
+use crate::app::window::open_additional_window_safe;
 
 pub fn set_app_menu(
     app: &AppHandle<Wry>,
