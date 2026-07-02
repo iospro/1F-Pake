@@ -6,7 +6,6 @@
   const HISTORY_MAX_KEY = "pake_history_max";
   const PENDING_PUSH_KEY = "pake_history_pending_push";
   const TICKERS_URL_PATTERNS = ["/tickers/all", "/tickers/system"];
-
   function toAbsoluteUrl(url) {
     try {
       return new URL(url, window.location.href);
@@ -73,6 +72,12 @@
       resizeMode: withRetinaResizeMode(currentVideo.resizeMode),
     };
     return nextConstraints;
+  }
+
+  function invokeNative(name, payload) {
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (!invoke) return Promise.reject(new Error("Tauri bridge not ready"));
+    return invoke(name, payload);
   }
 
   function installRetinaDisplayMediaPatch() {
@@ -606,6 +611,14 @@
         font-size: 18px;
         font-weight: 500;
       }
+
+      #${TITLEBAR_ID} .pake-accounts-button {
+        min-width: 34px;
+        width: 34px;
+        padding: 0;
+        font-size: 14px;
+        font-weight: 700;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -678,11 +691,9 @@
       addButton.setAttribute("aria-label", "Новая вкладка");
       addButton.textContent = "+";
       addButton.addEventListener("click", async () => {
-        const invoke = window.__TAURI__?.core?.invoke;
-        if (!invoke) return;
         try {
-          const tab = await invoke("open_tab", { url: window.location.href });
-          await invoke("switch_tab", { id: tab.id });
+          const tab = await requestTabsNative("open_tab", { url: window.location.href });
+          await requestTabsNative("switch_tab", { id: tab.id });
         } catch {
           // Keep the current tab usable if native tab creation fails.
         }
@@ -704,6 +715,72 @@
   let tabsSnapshot = [];
   let latestSnapshotVersion = 0;
   let tabsListenerReady = false;
+  let tabsBridgeListenerReady = false;
+  let tabsBridgeRequestCounter = 0;
+  const pendingTabsBridgeRequests = new Map();
+
+  function normalizeTabsEventPayload(payload) {
+    if (typeof payload === "string") {
+      try {
+        return JSON.parse(payload);
+      } catch {
+        return null;
+      }
+    }
+    return payload && typeof payload === "object" ? payload : null;
+  }
+
+  function emitTabsNative(name, payload) {
+    const emit = window.__TAURI__?.event?.emit;
+    if (!emit) return Promise.reject(new Error("Tauri event bridge not ready"));
+    return emit(name, payload);
+  }
+
+  async function ensureTabsBridgeListener() {
+    if (tabsBridgeListenerReady) return true;
+    const listen = window.__TAURI__?.event?.listen;
+    if (!listen) return false;
+
+    tabsBridgeListenerReady = true;
+    await listen("pake.tabs:response", (event) => {
+      const payload = normalizeTabsEventPayload(event.payload);
+      if (!payload) return;
+      const pending = pendingTabsBridgeRequests.get(payload.request_id);
+      if (!pending) return;
+
+      pendingTabsBridgeRequests.delete(payload.request_id);
+      if (payload.ok) {
+        pending.resolve(payload.data);
+      } else {
+        pending.reject(new Error(payload.error || "Tab bridge error"));
+      }
+    });
+    return true;
+  }
+
+  async function requestTabsNative(action, params = {}) {
+    const ready = await ensureTabsBridgeListener();
+    if (!ready) {
+      throw new Error("Tauri event bridge not ready");
+    }
+
+    tabsBridgeRequestCounter += 1;
+    const request_id = `${Date.now()}-${tabsBridgeRequestCounter}`;
+    const request = { request_id, action, params };
+
+    const response = new Promise((resolve, reject) => {
+      pendingTabsBridgeRequests.set(request_id, { resolve, reject });
+      window.setTimeout(() => {
+        if (pendingTabsBridgeRequests.has(request_id)) {
+          pendingTabsBridgeRequests.delete(request_id);
+          reject(new Error(`Tab bridge timeout: ${action}`));
+        }
+      }, 8000);
+    });
+
+    await emitTabsNative("pake.tabs:request", request);
+    return response;
+  }
 
   function applyTabsSnapshot(payload) {
     const nextVersion = Number(payload?.version || 0);
@@ -742,10 +819,8 @@
       }
       tabButton.addEventListener("click", async () => {
         if (isActive) return;
-        const invoke = window.__TAURI__?.core?.invoke;
-        if (!invoke) return;
         try {
-          await invoke("switch_tab", { id: tab.id });
+          await requestTabsNative("switch_tab", { id: tab.id });
         } catch {
           // The next snapshot will reconcile a stale tab button.
         }
@@ -760,10 +835,8 @@
       close.addEventListener("click", async (event) => {
         event.stopPropagation();
         if (tab.id === 1) return;
-        const invoke = window.__TAURI__?.core?.invoke;
-        if (!invoke) return;
         try {
-          await invoke("close_tab", { id: tab.id });
+          await requestTabsNative("close_tab", { id: tab.id });
         } catch {
           // The next snapshot will reconcile a stale tab button.
         }
@@ -791,10 +864,8 @@
   }
 
   async function refreshTabsSnapshot() {
-    const invoke = window.__TAURI__?.core?.invoke;
-    if (!invoke) return;
     try {
-      const payload = await invoke("get_tabs");
+      const payload = await requestTabsNative("get_tabs");
       if (applyTabsSnapshot(payload)) {
         renderTabs();
         updateTitleDisplay();
@@ -810,7 +881,8 @@
     if (!listen) return;
     tabsListenerReady = true;
     await listen("pake-tabs:snapshot", (event) => {
-      if (applyTabsSnapshot(event.payload)) {
+      const payload = normalizeTabsEventPayload(event.payload);
+      if (applyTabsSnapshot(payload)) {
         renderTabs();
         updateTitleDisplay();
       }
@@ -909,14 +981,12 @@
     ensureHistoryState();
     ensureTitlebar();
     syncDockBadgeFromTitle();
-    refreshTabsSnapshot();
   });
 
   window.addEventListener("load", () => {
     ensureHistoryState();
     ensureTitlebar();
     syncDockBadgeFromTitle();
-    refreshTabsSnapshot();
   });
 
   ensureHistoryState();
@@ -924,6 +994,4 @@
   ensureTitlebar();
   observeTitleBadge();
   observeTickersRequests();
-  ensureTabsListener();
-  refreshTabsSnapshot();
 })();

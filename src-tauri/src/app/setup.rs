@@ -8,8 +8,8 @@ use tauri::{
     AppHandle, Manager,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
-use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+#[allow(dead_code)]
 pub fn set_system_tray(
     app: &AppHandle,
     show_system_tray: bool,
@@ -61,7 +61,6 @@ pub fn set_system_tray(
                 }
             }
             "quit" => {
-                let _ = app.save_window_state(StateFlags::all());
                 app.exit(0);
             }
             _ => (),
@@ -107,6 +106,7 @@ pub fn set_system_tray(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn set_global_shortcut(
     app: &AppHandle,
     shortcut: String,

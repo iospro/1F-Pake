@@ -100,7 +100,8 @@ scripts/docker-check.sh
 
 Для `ru.1forma.ru` добавлена project-specific инъекция:
 
-- `same-window-routes.js` — принудительно открывает ВКС-сценарии в текущем окне, даже если сайт пытается увести их в отдельное окно через `_blank` или `window.open`.
+- `same-window-routes.js` — управляет табами, навигацией и общими overlay-патчами внутри текущего окна, включая принудительное удержание ВКС-сценариев в этом же webview.
+- `account-manager-routes.js` — отдельный injected-слой для экрана учеток, списка аккаунтов и добавления новой учетки.
 
 ## Камера и микрофон
 
@@ -119,6 +120,13 @@ scripts/docker-check.sh
 
 ## Native tabs
 
-The app now treats every Rust-created `WebviewWindow` as an independent tab. The injected overlay renders a native-style tab strip, while Rust stays the source of truth for tab creation, activation, closing, and snapshot sync.
+The app treats every Rust-created `WebviewWindow` as an independent tab. The injected overlay renders a native-style tab strip, while Rust stays the source of truth for tab creation, activation, closing, and snapshot sync. App-specific JS is split into `same-window-routes.js` for navigation/tab behavior and `account-manager-routes.js` for the account manager UI.
+
+Current bridge contract:
+
+- JS sends tab requests through `pake.tabs:request`;
+- Rust replies through `pake.tabs:response`;
+- Rust emits `pake-tabs:snapshot` after state changes;
+- the `+` button opens a new native `WebviewWindow` and then activates it through the bridge.
 
 Tab labels are path-first: the visible text should prefer the current page's relative path, truncated with ellipsis when space is tight.

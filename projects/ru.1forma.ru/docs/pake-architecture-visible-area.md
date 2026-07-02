@@ -7,13 +7,16 @@ This document captures the current Pake architecture relevant to the 1Forma desk
 - `pake-cli` is back to the stock `WebviewWindow` model.
 - The stable working point in this project is commit `24dc40e chore: capture working desktop wrapper state`.
 - The generated app is built through `build-new.sh`.
-- The current app-specific injection is `same-window-routes.js`.
+- The current app-specific injection is split across:
+  - `same-window-routes.js` for tab/navigation and shared overlay logic;
+  - `account-manager-routes.js` for the account manager UI.
 
-Important mismatch in the current baseline:
+Current bridge contract in the checked-in baseline:
 
-- `same-window-routes.js` contains UI calls for `get_tabs`, `open_tab`, `switch_tab`, and `close_tab`.
-- The stock `pake-cli` runtime currently does not register these commands in `src-tauri/src/lib.rs`.
-- Therefore the tab UI contract exists on the JS side, but the Rust side is not present in the current working baseline.
+- `same-window-routes.js` talks to Rust through `pake.tabs:request` and `pake.tabs:response`.
+- Rust emits `pake-tabs:snapshot` after tab state changes.
+- `account-manager-routes.js` uses the same event-bridge pattern through `ru.1forma.accounts:request` and `ru.1forma.accounts:response`.
+- The native tab layer is backed by Rust `WebviewWindow` orchestration, not by `invoke(...)` calls.
 
 ## How Pake Is Wired Internally
 
@@ -50,7 +53,8 @@ PAKE_CREATE_APP=1 node "$PAKE_CLI_ENTRY" https://ru.1forma.ru \
   --multi-window \
   --camera \
   --microphone \
-  --inject "$ROOT/same-window-routes.js"
+  --inject "$ROOT/same-window-routes.js" \
+  --inject "$ROOT/account-manager-routes.js"
 ```
 
 The script intentionally:
@@ -128,18 +132,18 @@ Relevant fields:
 8. `auth.js`
 9. `custom.js`
 
-For 1Forma, `custom.js` is generated from `same-window-routes.js`, so the app-specific overlay runs after Pake's common injections.
+For 1Forma, `custom.js` is generated from `same-window-routes.js` plus `account-manager-routes.js`, so the app-specific overlays run after Pake's common injections.
 
 ## Current 1Forma Injection
 
-The project injection file is `same-window-routes.js`.
+The project injection files are `same-window-routes.js` and `account-manager-routes.js`.
 
 It currently does four major jobs:
 
 1. Dock badge sync from title and ticker API responses.
 2. Same-window routing for internal 1Forma links and VKS/video links.
 3. Custom macOS overlay titlebar.
-4. Planned native-tab UI that expects Rust tab commands.
+4. Native-tab UI that talks to Rust through the event bridge.
 
 The custom overlay:
 
@@ -292,32 +296,42 @@ Likely causes:
 
 ## Native Tabs: Required Contract
 
-If native tabs are restored, Rust and JS must agree on a precise contract.
+The current tab layer is bridge-based and must stay consistent between JS and Rust.
 
-JS currently expects:
+JS sends:
 
-- `get_tabs() -> { version, tabs }`
-- `open_tab({ url }) -> tab`
-- `switch_tab({ id })`
-- `close_tab({ id })`
-- event `pake-tabs:snapshot`
+- `get_tabs`
+- `open_tab`
+- `switch_tab`
+- `close_tab`
+- `set_tab_title`
+- `set_tab_path`
 
-Rust must provide:
+Rust replies:
+
+- `pake.tabs:response`
+
+Rust emits:
+
+- `pake-tabs:snapshot`
+
+Rust owns:
 
 - a `TabManager`;
 - stable tab IDs;
 - active tab state;
 - title/path sync;
-- explicit show/hide or attach/detach behavior;
+- explicit show/hide behavior between `WebviewWindow`s;
 - snapshot emission after every change.
 
-Important: if tabs are implemented with multiple `WebviewWindow`s, `+` creates OS windows unless they are hidden and orchestrated. If tabs are implemented with child webviews, the whole runtime must move to `Window + Webview` intentionally.
+Important: if tabs are implemented with multiple `WebviewWindow`s, the `+` action must create the new window hidden first and only then activate it, otherwise the OS window frame flashes visibly.
 
 ## Safe Change Points
 
 For small changes:
 
 - `same-window-routes.js` for project-only injected UI/routing/badge logic.
+- `account-manager-routes.js` for the separate account manager layer.
 - `build-new.sh` for actual build flags.
 
 For Pake runtime:

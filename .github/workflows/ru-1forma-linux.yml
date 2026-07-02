@@ -80,6 +80,9 @@ jobs:
             exit 1
           fi
 
+          bash scripts/postprocess-linux-deb.sh "$destination" "output/linux/${{ inputs.title }}_${arch}.patched.deb"
+          mv "output/linux/${{ inputs.title }}_${arch}.patched.deb" "$destination"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:

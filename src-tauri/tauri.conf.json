@@ -1,6 +1,6 @@
 {
-  "productName": "Weekly",
-  "identifier": "com.pake.weekly",
+  "productName": "Первая Форма",
+  "identifier": "ru.1forma",
   "version": "3.11.10",
   "app": {
     "withGlobalTauri": true,

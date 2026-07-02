@@ -51,6 +51,7 @@ projects/
   ru.1forma.ru/
     config.json
     same-window-routes.js
+    account-manager-routes.js
     scripts/
 pake-cli/
 ```

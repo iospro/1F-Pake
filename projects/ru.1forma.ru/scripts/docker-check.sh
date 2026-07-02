@@ -2,7 +2,7 @@
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="${IMAGE:-pake-1forma-check:local}"
+IMAGE="${IMAGE:-ru-1forma-check:local}"
 DOCKERFILE="${DOCKERFILE:-$ROOT/.docker/check.Dockerfile}"
 
 show_help() {
@@ -20,7 +20,7 @@ Options:
   -h, --help Show this help.
 
 Environment:
-  IMAGE      Docker image tag. Default: pake-1forma-check:local
+  IMAGE      Docker image tag. Default: ru-1forma-check:local
   DOCKERFILE Dockerfile path. Default: .docker/check.Dockerfile
 EOF
 }
@@ -73,7 +73,6 @@ docker run --rm \
   -v "$ROOT:/work:ro" \
   -w /work \
   "$IMAGE" \
-  sh -lc 'node --check same-window-routes.js'
+  sh -lc 'node --check same-window-routes.js && node --check account-manager-routes.js'
 
 echo "[docker-check] done"
-

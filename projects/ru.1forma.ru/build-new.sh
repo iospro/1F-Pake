@@ -114,7 +114,8 @@ PAKE_CREATE_APP=1 node "$PAKE_CLI_ENTRY" https://ru.1forma.ru \
   --multi-window \
   --camera \
   --microphone \
-  --inject "$ROOT/same-window-routes.js"
+  --inject "$ROOT/same-window-routes.js" \
+  --inject "$ROOT/account-manager-routes.js"
 
 rm -rf "$APP_STAGING_DIR/$APP_SLUG.app"
 cp -R "$PAKE_OUTPUT_APP" "$APP_STAGING_DIR/$APP_SLUG.app"

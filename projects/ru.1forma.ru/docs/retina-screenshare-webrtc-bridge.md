@@ -48,7 +48,7 @@ The 1Forma desktop app runs the site inside Pake/Tauri `WKWebView`. For that env
 
 Therefore the bridge should be local to the Pake app:
 
-- injected JS lives in `same-window-routes.js`;
+- injected JS lives in `same-window-routes.js`, while account-manager UI lives in `account-manager-routes.js`;
 - native bridge is launched by the macOS app or a helper process;
 - no Safari extension is required.
 
@@ -56,10 +56,11 @@ Therefore the bridge should be local to the Pake app:
 
 ### 1. Pake Injected JS
 
-Current injection file:
+Current injection files:
 
 ```text
 same-window-routes.js
+account-manager-routes.js
 ```
 
 Responsibilities:
@@ -318,7 +319,7 @@ Not recommended as the first implementation.
 
 ### Phase 1: JS Bridge Skeleton
 
-Add a guarded bridge path to `same-window-routes.js`.
+Add a guarded bridge path to the injected layer that owns the shared webview behavior, now split between `same-window-routes.js` and `account-manager-routes.js`.
 
 Acceptance:
 

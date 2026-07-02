@@ -88,6 +88,7 @@ pub struct PakeConfig {
 }
 
 impl PakeConfig {
+    #[allow(dead_code)]
     pub fn show_system_tray(&self) -> bool {
         self.system_tray.copied()
     }
