@@ -29,6 +29,20 @@
 
   window.__PAKE_EMPTY_ACCOUNT_STATE_URL__ = "empty-account.html";
 
+  function redirectExitPageIfNeeded() {
+    if (!window.location.pathname.endsWith("/exit.html")) return false;
+
+    const target = new URL("/", window.location.href).href;
+    if (window.location.href !== target) {
+      window.location.replace(target);
+    }
+    return true;
+  }
+
+  if (redirectExitPageIfNeeded()) {
+    return;
+  }
+
   function getRetinaDisplaySize() {
     const scale = Math.max(1, Math.round(window.devicePixelRatio || 1));
     return {
@@ -428,22 +442,18 @@
     replaceStateWithIndex(getStoredNumber(HISTORY_INDEX_KEY, 0));
   }
 
-  function ensureTitlebarStyles() {
-    if (document.getElementById(TITLEBAR_STYLE_ID)) return;
-
-    const style = document.createElement("style");
-    style.id = TITLEBAR_STYLE_ID;
-    style.textContent = `
+  function buildTitlebarStyleText() {
+    return `
       html {
         scroll-padding-top: ${TITLEBAR_HEIGHT}px;
       }
 
-      body {
-        box-sizing: border-box;
-        margin: 0;
-        padding-top: ${TITLEBAR_HEIGHT}px;
-        min-height: 100vh;
-        overflow-x: hidden;
+      #vh-root {
+        top: ${TITLEBAR_HEIGHT}px !important;
+        height: calc(100vh - ${TITLEBAR_HEIGHT}px) !important;
+        height: calc(100dvh - ${TITLEBAR_HEIGHT}px) !important;
+        max-height: calc(100vh - ${TITLEBAR_HEIGHT}px) !important;
+        max-height: calc(100dvh - ${TITLEBAR_HEIGHT}px) !important;
       }
 
       #${TITLEBAR_ID} {
@@ -689,6 +699,14 @@
         box-shadow: 0 10px 30px rgba(74, 125, 255, 0.28);
       }
     `;
+  }
+
+  function ensureTitlebarStyles() {
+    if (document.getElementById(TITLEBAR_STYLE_ID)) return;
+
+    const style = document.createElement("style");
+    style.id = TITLEBAR_STYLE_ID;
+    style.textContent = buildTitlebarStyleText();
     document.head.appendChild(style);
   }
 
@@ -1027,6 +1045,17 @@
     }
   }
 
+  function normalizeNavigationUrl(url) {
+    const absolute = toAbsoluteUrl(url);
+    if (!absolute) return url;
+
+    if (absolute.pathname.endsWith("/exit.html")) {
+      return new URL("/", absolute.origin).href;
+    }
+
+    return absolute.href;
+  }
+
   document.addEventListener(
     "click",
     (event) => {
@@ -1038,7 +1067,7 @@
 
       event.preventDefault();
       event.stopImmediatePropagation();
-      navigateInPlace(href);
+      navigateInPlace(normalizeNavigationUrl(href));
     },
     true,
   );
@@ -1051,7 +1080,7 @@
       isInternal1FormaUrl(url);
 
     if (shouldRouteInPlace) {
-      navigateInPlace(url);
+      navigateInPlace(normalizeNavigationUrl(url));
       return window;
     }
 
