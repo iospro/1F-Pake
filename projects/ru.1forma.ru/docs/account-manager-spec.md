@@ -147,6 +147,220 @@ Current bridge contract:
 - Rust replies through `ru.1forma.accounts:response`;
 - Rust emits `ru.1forma.accounts.snapshot` after store changes.
 
+## Technical Architecture
+
+This feature is split into three layers so the account manager can evolve without destabilizing the web app.
+
+### Native state layer
+
+Rust owns the durable account state and the bridge lifecycle.
+
+Responsibilities:
+
+- keep the authoritative list of accounts;
+- track the currently active account;
+- persist account metadata and credentials;
+- expose commands for read and write operations;
+- emit snapshots after each state change;
+- register the native listener only after JS has finished its startup handshake.
+
+This layer does not:
+
+- render the account manager UI;
+- own input focus, button state, or form validation;
+- assume the webview is ready during app launch;
+- register early listeners in `setup()` if that can crash startup.
+
+### Web UI layer
+
+JS owns the interactive shell inside the webview.
+
+Responsibilities:
+
+- render the account manager screen;
+- show the current account list;
+- show the add-account form;
+- keep local interaction state such as input values, button enabled state, and debug markers;
+- call Rust commands when the user asks for data changes;
+- react to Rust snapshots and responses.
+
+This layer does not:
+
+- decide how accounts are stored on disk;
+- own the native lifecycle of the app;
+- register native listeners before the webview is ready;
+- keep the account store as the only source of truth.
+
+### Bridge contract layer
+
+This is the protocol between the two worlds.
+
+Current contract:
+
+- JS installs its listeners first;
+- JS calls `init_account_bridge`;
+- Rust registers the native bridge listener at that point;
+- Rust immediately emits the current account snapshot;
+- JS updates visible state from that snapshot;
+- later mutations flow through request/response events and snapshot refreshes.
+
+This contract exists specifically to avoid startup races on macOS and to keep bridge initialization deterministic.
+
+## Internal Structure
+
+The account manager is easier to reason about as a set of focused modules rather than one monolithic feature.
+
+### Rust-side modules
+
+#### `src-tauri/src/app/account_store.rs`
+
+This is the account domain store.
+
+Logical responsibilities:
+
+- `AccountRecord` stores one saved account;
+- `AccountStore` keeps the in-memory/native collection;
+- `UpsertAccountParams` describes add/update operations;
+- `SetActiveAccountParams` describes account switching;
+- `AccountListResponse` packages list output for the UI;
+- `AccountBridgeRequest` and `AccountBridgeResponse<T>` define the bridge payload contract;
+- `list_accounts()` returns the current account list;
+- `upsert_account()` adds or updates one account;
+- `set_active_account()` changes the active account;
+- `emit_current_accounts_snapshot()` pushes the current store state to JS;
+- `register_account_bridge()` installs the native listener that reacts to JS requests.
+
+#### `src-tauri/src/lib.rs`
+
+This is the app bootstrap and command registration point.
+
+Responsibilities:
+
+- register Tauri plugins;
+- expose account-related commands through `invoke_handler`;
+- own the `init_account_bridge` handshake command;
+- keep startup work minimal enough to avoid early AppKit crashes;
+- wire global app concerns such as menu, tray, and window visibility.
+
+#### `src-tauri/src/app/window.rs`
+
+This is the native window orchestration layer.
+
+Responsibilities:
+
+- create and focus windows;
+- manage visibility and focus behavior;
+- support the existing tab/window architecture;
+- keep account manager work separate from core window mechanics.
+
+#### `src-tauri/src/app/invoke.rs`
+
+This file hosts app commands that are not account-store specific.
+
+Responsibilities:
+
+- general app commands;
+- notifications;
+- downloads;
+- badge and dock helpers;
+- theme and restart commands.
+
+### JS-side modules
+
+#### `projects/ru.1forma.ru/account-manager-routes.js`
+
+This is the account manager UI controller.
+
+Responsibilities:
+
+- bootstrap the account manager screen;
+- install listeners for native responses and snapshots;
+- send bridge requests to Rust;
+- maintain UI-local state like input values, debug steps, and button state;
+- render the list/add-account experience.
+
+#### `projects/ru.1forma.ru/same-window-routes.js`
+
+This is the shared shell and navigation controller.
+
+Responsibilities:
+
+- manage the current webview-driven shell;
+- keep the tab and navigation overlay behavior working;
+- stay focused on general app route logic rather than account manager internals.
+
+## Why the split matters
+
+The split is not cosmetic. It protects us from three failure classes:
+
+1. Startup crash risk from early native event registration.
+2. State drift between what the web UI shows and what the native store owns.
+3. Future feature creep where account logic starts leaking into the general navigation file.
+
+With this split:
+
+- Rust owns persistence and lifecycle-sensitive code;
+- JS owns interaction and rendering;
+- the bridge is the only narrow seam between them;
+- the app can restart, reload, or re-render the webview without losing account state.
+
+## Account Manager Flow, End to End
+
+1. App launches.
+2. WebView loads the injected routes.
+3. The account manager JS layer initializes its listeners.
+4. JS calls `init_account_bridge`.
+5. Rust registers the bridge listener and emits a snapshot.
+6. JS renders the current account list.
+7. User adds or selects an account.
+8. JS sends a bridge request.
+9. Rust mutates the native store and emits a fresh snapshot.
+10. JS redraws the screen from the new snapshot.
+
+The key property is that the UI is always derived from native state, not the other way around.
+
+## Event Map
+
+This section defines the live event contract between JS and Rust.
+
+### JS -> Rust
+
+- `init_account_bridge`
+  - sent by JS after its listeners are installed;
+  - starts the native bridge lifecycle;
+  - must not be called before the web layer is ready.
+
+- `ru.1forma.accounts:request`
+  - carries account actions such as list, add, and switch;
+  - is the main request channel for the account manager UI;
+  - should stay the only direct command pipe from JS to the native account store.
+
+### Rust -> JS
+
+- `ru.1forma.accounts:response`
+  - carries replies for request/response bridge actions;
+  - returns either payload data or an error for the originating request.
+
+- `ru.1forma.accounts.snapshot`
+  - carries the full current account list state;
+  - is emitted after store mutations and during bridge bootstrap;
+  - is the canonical refresh signal for the JS UI.
+
+### Lifecycle Rules
+
+- JS installs listeners first.
+- JS then calls `init_account_bridge`.
+- Rust registers the native listener only at that point.
+- Rust immediately emits the current snapshot.
+- JS always rebuilds the visible screen from the latest snapshot.
+- Any write operation should end with a fresh snapshot so the UI and native store cannot drift.
+
+### Failure Boundaries
+
+- if JS is not ready, the bridge should not start;
+- if Rust has not emitted a snapshot yet, the account manager UI should remain in a loading or bootstrap state;
+- if a request fails, JS should show the error and keep the current snapshot intact.
+
 ### Existing Files Likely to Change
 
 - [`/Users/malex/Work/Pake/pake-cli/projects/ru.1forma.ru/same-window-routes.js`](/Users/malex/Work/Pake/pake-cli/projects/ru.1forma.ru/same-window-routes.js)

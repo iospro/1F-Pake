@@ -1,0 +1,11 @@
+# Automatically generated - custom app permission
+
+[[permission]]
+identifier = "allow-upsert-account"
+description = "Enables the upsert_account command without any pre-configured scope."
+commands.allow = ["upsert_account"]
+
+[[permission]]
+identifier = "deny-upsert-account"
+description = "Denies the upsert_account command without any pre-configured scope."
+commands.deny = ["upsert_account"]

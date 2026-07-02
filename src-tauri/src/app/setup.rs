@@ -9,7 +9,6 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
-#[allow(dead_code)]
 pub fn set_system_tray(
     app: &AppHandle,
     show_system_tray: bool,
@@ -106,7 +105,6 @@ pub fn set_system_tray(
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn set_global_shortcut(
     app: &AppHandle,
     shortcut: String,

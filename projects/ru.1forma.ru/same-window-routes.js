@@ -2,10 +2,16 @@
   const TITLEBAR_ID = "pake-1forma-titlebar";
   const TITLEBAR_STYLE_ID = "pake-1forma-titlebar-style";
   const TITLEBAR_HEIGHT = 44;
+  const TAB_REQUEST_EVENT = "pake.tabs:request";
+  const TAB_RESPONSE_EVENT = "pake.tabs:response";
+  const TAB_SNAPSHOT_EVENT = "pake-tabs:snapshot";
   const HISTORY_INDEX_KEY = "pake_history_index";
   const HISTORY_MAX_KEY = "pake_history_max";
   const PENDING_PUSH_KEY = "pake_history_pending_push";
   const TICKERS_URL_PATTERNS = ["/tickers/all", "/tickers/system"];
+
+  // Shared shell layer only: tabs, navigation, titlebar, and global webview patches.
+  // Account manager UI lives in account-manager-routes.js and uses its own bridge.
   function toAbsoluteUrl(url) {
     try {
       return new URL(url, window.location.href);
@@ -742,7 +748,7 @@
     if (!listen) return false;
 
     tabsBridgeListenerReady = true;
-    await listen("pake.tabs:response", (event) => {
+    await listen(TAB_RESPONSE_EVENT, (event) => {
       const payload = normalizeTabsEventPayload(event.payload);
       if (!payload) return;
       const pending = pendingTabsBridgeRequests.get(payload.request_id);
@@ -778,7 +784,7 @@
       }, 8000);
     });
 
-    await emitTabsNative("pake.tabs:request", request);
+    await emitTabsNative(TAB_REQUEST_EVENT, request);
     return response;
   }
 
@@ -880,7 +886,7 @@
     const listen = window.__TAURI__?.event?.listen;
     if (!listen) return;
     tabsListenerReady = true;
-    await listen("pake-tabs:snapshot", (event) => {
+    await listen(TAB_SNAPSHOT_EVENT, (event) => {
       const payload = normalizeTabsEventPayload(event.payload);
       if (applyTabsSnapshot(payload)) {
         renderTabs();

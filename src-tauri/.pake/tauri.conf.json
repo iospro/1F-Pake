@@ -1,0 +1,49 @@
+{
+    "productName": "1forma",
+    "identifier": "com.pake.a4c56c2",
+    "version": "1.0.0",
+    "app": {
+        "withGlobalTauri": true,
+        "security": {
+            "headers": {},
+            "csp": null
+        }
+    },
+    "build": {
+        "frontendDist": "../dist"
+    },
+    "bundle": {
+        "icon": [
+            "icons/1forma.icns"
+        ],
+        "active": true,
+        "targets": [
+            "app"
+        ],
+        "macOS": {
+            "signingIdentity": "-",
+            "hardenedRuntime": true,
+            "entitlements": "entitlements.plist",
+            "infoPlist": "Info.plist",
+            "dmg": {
+                "background": "assets/macos/dmg/background.png",
+                "windowSize": {
+                    "width": 680,
+                    "height": 420
+                },
+                "appPosition": {
+                    "x": 190,
+                    "y": 250
+                },
+                "applicationFolderPosition": {
+                    "x": 500,
+                    "y": 250
+                }
+            }
+        },
+        "resources": [
+            "icons/1forma.icns"
+        ]
+    },
+    "mainBinaryName": "pake-1forma"
+}

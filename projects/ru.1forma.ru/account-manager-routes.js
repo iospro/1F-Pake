@@ -1,13 +1,14 @@
 (function () {
   const ACCOUNTS_PANEL_ID = "pake-1forma-accounts-panel";
+  const ACCOUNT_LIST_COMMAND = "list_accounts";
+  const ACCOUNT_UPSERT_COMMAND = "upsert_account";
+  const ACCOUNT_SET_ACTIVE_COMMAND = "set_active_account";
+
   let accountsSnapshot = { active_account_id: null, accounts: [] };
   let accountsPanelVisible = false;
   let accountsFormVisible = true;
   let debugStep = "boot";
   let debugDetail = "";
-  let bridgeListenerReady = false;
-  let bridgeRequestCounter = 0;
-  const pendingBridgeRequests = new Map();
 
   function normalizeEventPayload(payload) {
     if (typeof payload === "string") {
@@ -32,64 +33,20 @@
     console.info("[Pake][AccountManager]", step, detail);
   }
 
-  function emitNative(name, payload) {
-    const emit = window.__TAURI__?.event?.emit;
-    if (!emit) return Promise.reject(new Error("Tauri event bridge not ready"));
-    return emit(name, payload);
-  }
-
-  async function ensureBridgeListener() {
-    if (bridgeListenerReady) return true;
-    const listen = window.__TAURI__?.event?.listen;
-    if (!listen) return false;
-
-    bridgeListenerReady = true;
-    await listen("ru.1forma.accounts:response", (event) => {
-      const payload = normalizeEventPayload(event.payload);
-      if (!payload) return;
-      const pending = pendingBridgeRequests.get(payload.request_id);
-      if (!pending) return;
-
-      pendingBridgeRequests.delete(payload.request_id);
-      if (payload.ok) {
-        pending.resolve(payload.data);
-      } else {
-        pending.reject(new Error(payload.error || "Account bridge error"));
-      }
-    });
-    await listen("ru.1forma.accounts.snapshot", (event) => {
-      const payload = normalizeEventPayload(event.payload);
-      if (!payload) return;
-      accountsSnapshot = payload;
-      accountsFormVisible = !hasAccounts();
-      setDebugStep("snapshot", `${getAccountsList().length} accounts`);
-      renderAccountsPanel();
-    });
-    return true;
+  function getCurrentWindowLabel() {
+    try {
+      const currentWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+      if (!currentWindow) return "unknown";
+      return currentWindow.label || "unknown";
+    } catch {
+      return "unknown";
+    }
   }
 
   async function requestNative(action, params = {}) {
-    const ready = await ensureBridgeListener();
-    if (!ready) {
-      throw new Error("Tauri event bridge not ready");
-    }
-
-    bridgeRequestCounter += 1;
-    const request_id = `${Date.now()}-${bridgeRequestCounter}`;
-    const request = { request_id, action, params };
-
-    const response = new Promise((resolve, reject) => {
-      pendingBridgeRequests.set(request_id, { resolve, reject });
-      window.setTimeout(() => {
-        if (pendingBridgeRequests.has(request_id)) {
-          pendingBridgeRequests.delete(request_id);
-          reject(new Error(`Account bridge timeout: ${action}`));
-        }
-      }, 8000);
-    });
-
-    await emitNative("ru.1forma.accounts:request", request);
-    return response;
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (!invoke) throw new Error("Tauri invoke bridge not ready");
+    return invoke(action, params);
   }
 
   function getAccountsList() {
@@ -172,7 +129,8 @@
   async function loadAccountsSnapshot() {
     try {
       setDebugStep("load-start");
-      const payload = await requestNative("list_accounts");
+      setDebugStep("window-label", getCurrentWindowLabel());
+      const payload = await requestNative(ACCOUNT_LIST_COMMAND);
       accountsSnapshot = payload || accountsSnapshot;
       accountsFormVisible = !hasAccounts();
       setDebugStep("load-ok", `${getAccountsList().length} accounts`);
@@ -197,15 +155,18 @@
     const submitButton = form.querySelector(".pake-accounts-submit");
     if (submitButton) submitButton.disabled = true;
     setDebugStep("submit-valid", `${title} -> ${host}`);
+    setDebugStep("window-label", getCurrentWindowLabel());
 
     try {
       setDebugStep("invoke-upsert", JSON.stringify({ title, host }));
-      const payload = await requestNative("upsert_account", { title, host });
+      const payload = await requestNative(ACCOUNT_UPSERT_COMMAND, {
+        params: { title, host },
+      });
       if (payload) {
         setDebugStep("upsert-ok", payload.id || "no-id");
-        await requestNative("set_active_account", { id: payload.id }).catch(() => {});
+        await requestNative(ACCOUNT_SET_ACTIVE_COMMAND, { id: payload.id }).catch(() => {});
         setDebugStep("active-set", payload.id || "no-id");
-        accountsSnapshot = await requestNative("list_accounts").catch(() => accountsSnapshot);
+        accountsSnapshot = await requestNative(ACCOUNT_LIST_COMMAND).catch(() => accountsSnapshot);
         accountsFormVisible = false;
         setDebugStep("refresh-list", `${getAccountsList().length} accounts`);
         renderAccountsPanel();
@@ -234,8 +195,8 @@
   async function activateAccount(accountId) {
     try {
       setDebugStep("activate-start", String(accountId));
-      await requestNative("set_active_account", { id: accountId });
-      accountsSnapshot = await requestNative("list_accounts");
+      await requestNative(ACCOUNT_SET_ACTIVE_COMMAND, { params: { id: accountId } });
+      accountsSnapshot = await requestNative(ACCOUNT_LIST_COMMAND);
       setDebugStep("activate-refresh", `${getAccountsList().length} accounts`);
       renderAccountsPanel();
       closeAccountsPanel();
@@ -292,13 +253,11 @@
       panel.querySelector(".pake-accounts-form")?.addEventListener("input", (event) => {
         const target = event.target;
         if (!target || target.tagName !== "INPUT") return;
-        setDebugStep("form-input", `${target.name || "input"} changed`);
         updateAddButtonState(event.currentTarget);
       });
       panel.querySelector(".pake-accounts-form")?.addEventListener("change", (event) => {
         const target = event.target;
         if (!target || target.tagName !== "INPUT") return;
-        setDebugStep("form-change", `${target.name || "input"} changed`);
         updateAddButtonState(event.currentTarget);
       });
       document.body.appendChild(panel);
@@ -589,9 +548,6 @@
     renderAccountsPanel();
     loadAccountsSnapshot();
     setDebugStep("bootstrap");
-    invokeNative("init_account_bridge").catch((error) => {
-      console.warn("[Pake][AccountManager] bridge init failed", error);
-    });
   }
 
   function waitForBootstrap() {
