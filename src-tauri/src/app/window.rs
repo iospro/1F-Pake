@@ -1,3 +1,4 @@
+use crate::app::account_store;
 use crate::app::config::PakeConfig;
 use crate::util::{
     check_file_or_append, get_data_dir, get_download_message_with_lang, show_toast, MessageType,
@@ -156,13 +157,22 @@ fn build_window_with_label(
         }
     };
 
+    let start_url = if label == "pake" {
+        account_store::active_account_base_url(app)
+            .and_then(|value| Url::from_str(&value).ok())
+            .map(WebviewUrl::External)
+            .unwrap_or(url)
+    } else {
+        url
+    };
+
     build_window(
         app,
         config,
         tauri_config,
         WindowBuildOptions {
             label,
-            url,
+            url: start_url,
             visible: true,
             new_window_features: None,
         },

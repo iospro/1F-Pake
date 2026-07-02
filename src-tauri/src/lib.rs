@@ -98,7 +98,6 @@ pub fn run_app() {
     let _init_fullscreen = pake_config.windows[0].fullscreen;
     let activation_shortcut = pake_config.windows[0].activation_shortcut.clone();
     let hide_on_close = pake_config.windows[0].hide_on_close;
-    let start_to_tray = pake_config.windows[0].start_to_tray && show_system_tray;
     let _multi_window = pake_config.multi_window;
     let _enable_find = pake_config.windows[0].enable_find;
     let app_builder = tauri_app

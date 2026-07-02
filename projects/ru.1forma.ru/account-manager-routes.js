@@ -81,6 +81,7 @@
     if (!panel) return;
     panel.classList.remove("is-visible");
     visible = false;
+    render();
   }
 
   async function loadAccounts() {
@@ -126,10 +127,20 @@
   }
 
   async function activateAccount(accountId) {
-    await requestNative(SET_ACTIVE_COMMAND, { params: { id: accountId } });
+    const account = await requestNative(SET_ACTIVE_COMMAND, { params: { id: accountId } });
     snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
     mode = "list";
+    visible = false;
     render();
+    const nextUrl = String(account?.base_url || account?.host || "").trim();
+    if (nextUrl) {
+      const target = nextUrl.startsWith("http://") || nextUrl.startsWith("https://")
+        ? nextUrl
+        : `https://${nextUrl}`;
+      if (window.location.href !== target) {
+        window.location.href = target;
+      }
+    }
   }
 
   async function deleteAccount(accountId) {

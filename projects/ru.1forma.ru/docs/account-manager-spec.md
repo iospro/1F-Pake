@@ -32,8 +32,9 @@ The app should store multiple accounts natively and switch between them without 
 
 1. App opens.
 2. App loads the previously active account.
-3. If credentials are valid, the app opens the webview for that account.
-4. If credentials are expired or invalid, the app shows the account picker / login screen.
+3. The startup URL is injected in Rust the same way the static URL used to be injected.
+4. If credentials are valid, the app opens the webview for that account.
+5. If credentials are expired or invalid, the app shows the account picker / login screen.
 
 ### Account Switch
 
@@ -205,6 +206,22 @@ Current contract:
 - later mutations flow through request/response events and snapshot refreshes.
 
 This contract exists specifically to avoid startup races on macOS and to keep bridge initialization deterministic.
+
+## Startup Rule
+
+The startup URL for the main `WebviewWindow` must be chosen in Rust before the window is built.
+
+Do not:
+
+- inject a second JS-side redirect on startup when Rust already picked the active account;
+- wait for the account manager overlay to decide the page URL;
+- use a page-load hook to re-show the main window after the user has already closed it.
+
+Do:
+
+- resolve the active account once in the Rust window builder;
+- fall back to the static project URL only when no active account exists;
+- treat the startup URL path as the same kind of injection point that the old static URL used.
 
 ## Internal Structure
 

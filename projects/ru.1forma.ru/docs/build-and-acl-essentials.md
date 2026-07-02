@@ -129,3 +129,29 @@ Before chasing a bug, classify it first:
 8. Keep bridge payloads shaped exactly like Rust expects them.
 9. Keep build-time config, runtime bridge, and docs synchronized.
 10. When in doubt, inspect the first real error line, not the final `failed to build app` wrapper.
+
+## Startup Traps
+
+The startup path caused a separate class of bugs after the build issues were fixed.
+
+The safe pattern is:
+
+1. Rust chooses the startup URL before building the main `WebviewWindow`.
+2. The main window starts from that URL exactly once.
+3. JS does not also redirect the page on startup.
+4. The window is not shown again from a late `PageLoadEvent::Finished` hook if the user already closed it.
+
+What broke in practice:
+
+- static URLs worked because they were injected once, directly in the Rust window builder;
+- the active-account experiment started duplicating ownership of startup navigation between Rust and JS;
+- a delayed `show()` or a second `location.replace()` created the white flash / reopen loop;
+- the close button began to feel broken when a late load event re-shown the window after user close.
+
+Current rule:
+
+- if startup navigation is account-driven, inject it in Rust exactly where the static URL used to be injected;
+- do not add a JS startup redirect unless you are explicitly debugging startup ownership;
+- do not combine a page-load `show()` hook with a second startup redirect unless you really need both for a controlled experiment.
+
+This is the main reason the account start path was unstable even when the account store itself was reading correctly.
