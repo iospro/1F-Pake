@@ -322,6 +322,11 @@
       });
       panel.querySelector(".pake-accounts-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();
+        console.info("[Pake] account-manager submit", {
+          mode,
+          visible,
+          hasAccounts: hasAccounts(),
+        });
         await submitAccount(event.currentTarget);
       });
       panel.querySelector(".pake-accounts-form")?.addEventListener("input", (event) => {
@@ -390,7 +395,8 @@
         justify-content: center;
         background: rgba(15, 23, 42, 0.64);
         backdrop-filter: blur(12px);
-        z-index: 2147483646;
+        z-index: 2147483648;
+        pointer-events: auto;
       }
 
       #${PANEL_ID}.is-visible {
