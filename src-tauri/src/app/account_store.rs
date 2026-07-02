@@ -75,6 +75,11 @@ pub struct SetActiveAccountParams {
     pub id: String,
 }
 
+#[derive(Deserialize)]
+pub struct DeleteAccountParams {
+    pub id: String,
+}
+
 #[derive(Clone, Serialize)]
 pub struct AccountListResponse {
   pub active_account_id: Option<String>,
@@ -175,11 +180,66 @@ pub fn set_active_account(app: AppHandle, params: SetActiveAccountParams) -> Res
     Ok(account)
 }
 
+#[tauri::command]
+pub fn delete_account(app: AppHandle, params: DeleteAccountParams) -> Result<(), String> {
+    let tauri_config = app.config().clone();
+    let mut store = load_store(&app, &tauri_config)?;
+    let before_len = store.accounts.len();
+
+    store.accounts.retain(|account| account.id != params.id);
+    if store.accounts.len() == before_len {
+        return Err("Account not found".to_string());
+    }
+
+    if store
+        .active_account_id
+        .as_ref()
+        .is_some_and(|active_id| active_id == &params.id)
+    {
+        store.active_account_id = store.accounts.first().map(|account| account.id.clone());
+        for account in &mut store.accounts {
+            account.active = store
+                .active_account_id
+                .as_ref()
+                .is_some_and(|active_id| active_id == &account.id);
+        }
+    }
+
+    save_store(&app, &tauri_config, &store)?;
+    emit_snapshot(&app, &store);
+    Ok(())
+}
+
 pub fn emit_current_accounts_snapshot(app: &AppHandle) -> Result<(), String> {
     let tauri_config = app.config().clone();
     let store = load_store(app, &tauri_config)?;
     emit_snapshot(app, &store);
     Ok(())
+}
+
+pub fn active_account_base_url(app: &AppHandle) -> Option<String> {
+    const FALLBACK_ACTIVE_URL: &str = "https://ru.1forma.ru";
+    let tauri_config = app.config().clone();
+    let store = load_store(app, &tauri_config).ok()?;
+    let active_id = store.active_account_id.as_deref();
+    let account = store
+        .accounts
+        .iter()
+        .find(|account| account.active)
+        .or_else(|| active_id.and_then(|id| store.accounts.iter().find(|account| account.id == id)))
+        .or_else(|| store.accounts.first())?;
+    let candidate = account.base_url.trim();
+    if candidate.is_empty() {
+        eprintln!("[Pake] active account base_url empty, using fallback {FALLBACK_ACTIVE_URL}");
+        return Some(FALLBACK_ACTIVE_URL.to_string());
+    }
+    if candidate.starts_with("http://") || candidate.starts_with("https://") {
+        eprintln!("[Pake] active account base_url loaded: {candidate}");
+        return Some(candidate.to_string());
+    }
+    let normalized = format!("https://{candidate}");
+    eprintln!("[Pake] active account base_url normalized: {normalized}");
+    Some(normalized)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

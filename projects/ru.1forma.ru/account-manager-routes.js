@@ -1,284 +1,170 @@
 (function () {
-  const ACCOUNTS_PANEL_ID = "pake-1forma-accounts-panel";
-  const ACCOUNT_LIST_COMMAND = "list_accounts";
-  const ACCOUNT_UPSERT_COMMAND = "upsert_account";
-  const ACCOUNT_SET_ACTIVE_COMMAND = "set_active_account";
+  const PANEL_ID = "pake-1forma-accounts-panel";
+  const LIST_COMMAND = "list_accounts";
+  const UPSERT_COMMAND = "upsert_account";
+  const SET_ACTIVE_COMMAND = "set_active_account";
+  const DELETE_COMMAND = "delete_account";
 
-  let accountsSnapshot = { active_account_id: null, accounts: [] };
-  let accountsPanelVisible = false;
-  let accountsFormVisible = true;
-  let debugStep = "boot";
-  let debugDetail = "";
+  let snapshot = { active_account_id: null, accounts: [] };
+  let visible = false;
+  let mode = "list";
 
-  function normalizeEventPayload(payload) {
-    if (typeof payload === "string") {
-      try {
-        return JSON.parse(payload);
-      } catch {
-        return null;
-      }
-    }
-    return payload && typeof payload === "object" ? payload : null;
-  }
-
-  function setDebugStep(step, detail = "") {
-    debugStep = step;
-    debugDetail = detail;
-    const panel = document.getElementById(ACCOUNTS_PANEL_ID);
-    if (!panel) return;
-    const debugNode = panel.querySelector(".pake-accounts-debug");
-    if (debugNode) {
-      debugNode.textContent = detail ? `${step}: ${detail}` : step;
-    }
-    console.info("[Pake][AccountManager]", step, detail);
-  }
-
-  function getCurrentWindowLabel() {
-    try {
-      const currentWindow = window.__TAURI__?.window?.getCurrentWindow?.();
-      if (!currentWindow) return "unknown";
-      return currentWindow.label || "unknown";
-    } catch {
-      return "unknown";
-    }
-  }
-
-  async function requestNative(action, params = {}) {
+  function requestNative(action, params = {}) {
     const invoke = window.__TAURI__?.core?.invoke;
     if (!invoke) throw new Error("Tauri invoke bridge not ready");
     return invoke(action, params);
   }
 
-  function getAccountsList() {
-    return Array.isArray(accountsSnapshot.accounts) ? accountsSnapshot.accounts : [];
+  function getAccounts() {
+    return Array.isArray(snapshot.accounts) ? snapshot.accounts : [];
   }
 
   function hasAccounts() {
-    return getAccountsList().length > 0;
+    return getAccounts().length > 0;
   }
 
-  function normalizeHostInput(value) {
+  function getActiveAccount() {
+    const accounts = getAccounts();
+    return (
+      accounts.find((account) => account.active) ||
+      accounts.find((account) => account.id === snapshot.active_account_id) ||
+      accounts[0] ||
+      null
+    );
+  }
+
+  function normalizeHost(value) {
     const trimmed = String(value || "").trim();
     if (!trimmed) return "";
     if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, "");
     return `https://${trimmed.replace(/\/+$/, "")}`;
   }
 
-  function deriveAccountTitle(host) {
-    const normalized = String(host || "").replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    return normalized || "Новая учетка";
-  }
-
-  function isValidAccountHostInput(value) {
+  function isValidHost(value) {
     const raw = String(value || "").trim();
-    if (!raw) return false;
-    if (/\s/.test(raw)) return false;
+    if (!raw || /\s/.test(raw)) return false;
     try {
-      const url = raw.startsWith("http://") || raw.startsWith("https://") ? new URL(raw) : new URL(`https://${raw}`);
+      const url = raw.startsWith("http://") || raw.startsWith("https://")
+        ? new URL(raw)
+        : new URL(`https://${raw}`);
       return Boolean(url.hostname) && url.hostname.includes(".") && !url.hostname.endsWith(".");
     } catch {
       return false;
     }
   }
 
-  function updateAddButtonState(form) {
+  function updateSubmitState(form) {
     const titleInput = form.querySelector('input[name="account-title"]');
     const hostInput = form.querySelector('input[name="account-host"]');
     const submitButton = form.querySelector(".pake-accounts-submit");
     if (!submitButton) return;
-
-    const hasTitle = String(titleInput?.value || "").trim().length > 0;
-    const hostIsValid = isValidAccountHostInput(hostInput?.value);
-    const enabled = hasTitle && hostIsValid;
-
+    const enabled = String(titleInput?.value || "").trim().length > 0 && isValidHost(hostInput?.value);
     submitButton.disabled = !enabled;
-    form.dataset.addEnabled = enabled ? "true" : "false";
   }
 
-  function closeAccountsPanel() {
-    const panel = document.getElementById(ACCOUNTS_PANEL_ID);
-    if (!panel) return;
-    panel.classList.remove("is-visible");
-    accountsPanelVisible = false;
-    setDebugStep("panel-close");
+  function setMode(nextMode) {
+    mode = nextMode === "add" ? "add" : "list";
+    render();
   }
 
-  function revealAccountsForm() {
-    const panel = document.getElementById(ACCOUNTS_PANEL_ID);
-    const form = panel?.querySelector(".pake-accounts-form");
-    const titleInput = form?.querySelector('input[name="account-title"]');
-    setDebugStep("form-reveal", form ? "scrolling form into view" : "form missing");
-    if (form?.scrollIntoView) {
-      form.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    if (titleInput?.focus) {
-      window.requestAnimationFrame(() => titleInput.focus());
-    }
-  }
-
-  function openAccountsPanel() {
-    const panel = document.getElementById(ACCOUNTS_PANEL_ID);
+  function openPanel() {
+    const panel = document.getElementById(PANEL_ID);
     if (!panel) return;
     panel.classList.add("is-visible");
-    accountsPanelVisible = true;
-    accountsFormVisible = !hasAccounts();
-    setDebugStep("panel-open", hasAccounts() ? "accounts exist" : "no accounts yet");
-    renderAccountsPanel();
+    visible = true;
+    mode = hasAccounts() ? "list" : "add";
+    render();
   }
 
-  async function loadAccountsSnapshot() {
+  function closePanel() {
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel) return;
+    panel.classList.remove("is-visible");
+    visible = false;
+  }
+
+  async function loadAccounts() {
     try {
-      setDebugStep("load-start");
-      setDebugStep("window-label", getCurrentWindowLabel());
-      const payload = await requestNative(ACCOUNT_LIST_COMMAND);
-      accountsSnapshot = payload || accountsSnapshot;
-      accountsFormVisible = !hasAccounts();
-      setDebugStep("load-ok", `${getAccountsList().length} accounts`);
-      renderAccountsPanel();
-      if (!hasAccounts()) openAccountsPanel();
+      snapshot = (await requestNative(LIST_COMMAND)) || snapshot;
+      if (!hasAccounts()) {
+        mode = "add";
+        openPanel();
+        return;
+      }
+
+      mode = "list";
+      visible = false;
+      render();
     } catch {
-      // ignore until native bridge is ready
-      setDebugStep("load-failed", "native bridge not ready");
+      // ignore until bridge is ready
     }
   }
 
-  async function saveAccountFromForm(form) {
+  async function submitAccount(form) {
     const titleInput = form.querySelector('input[name="account-title"]');
     const hostInput = form.querySelector('input[name="account-host"]');
-    const title = String(titleInput?.value || "").trim() || deriveAccountTitle(hostInput?.value);
-    const host = normalizeHostInput(hostInput?.value);
-    if (!title || !isValidAccountHostInput(host)) {
-      setDebugStep("submit-invalid", `title="${title}" host="${String(hostInput?.value || "").trim()}"`);
-      return;
-    }
+    const title = String(titleInput?.value || "").trim();
+    const host = normalizeHost(hostInput?.value);
+    if (!title || !isValidHost(host)) return;
 
     const submitButton = form.querySelector(".pake-accounts-submit");
     if (submitButton) submitButton.disabled = true;
-    setDebugStep("submit-valid", `${title} -> ${host}`);
-    setDebugStep("window-label", getCurrentWindowLabel());
 
     try {
-      setDebugStep("invoke-upsert", JSON.stringify({ title, host }));
-      const payload = await requestNative(ACCOUNT_UPSERT_COMMAND, {
+      const payload = await requestNative(UPSERT_COMMAND, {
         params: { title, host },
       });
-      if (payload) {
-        setDebugStep("upsert-ok", payload.id || "no-id");
-        await requestNative(ACCOUNT_SET_ACTIVE_COMMAND, { id: payload.id }).catch(() => {});
-        setDebugStep("active-set", payload.id || "no-id");
-        accountsSnapshot = await requestNative(ACCOUNT_LIST_COMMAND).catch(() => accountsSnapshot);
-        accountsFormVisible = false;
-        setDebugStep("refresh-list", `${getAccountsList().length} accounts`);
-        renderAccountsPanel();
-
-        const nextTitleInput = form.querySelector('input[name="account-title"]');
-        const nextHostInput = form.querySelector('input[name="account-host"]');
-        if (nextTitleInput) nextTitleInput.value = "";
-        if (nextHostInput) nextHostInput.value = "";
-
-        const panel = document.getElementById(ACCOUNTS_PANEL_ID);
-        const list = panel?.querySelector(".pake-accounts-list");
-        if (list) {
-          list.scrollTop = list.scrollHeight;
-        }
-        setDebugStep("save-done", payload.id || "no-id");
+      if (payload?.id) {
+        await requestNative(SET_ACTIVE_COMMAND, { params: { id: payload.id } }).catch(() => {});
       }
-    } catch (error) {
-      console.error("[Pake] Failed to save account", error);
-      setDebugStep("submit-error", error?.message || String(error));
-      throw error;
+      snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
+      mode = "list";
+      render();
     } finally {
       if (submitButton) submitButton.disabled = false;
     }
   }
 
   async function activateAccount(accountId) {
-    try {
-      setDebugStep("activate-start", String(accountId));
-      await requestNative(ACCOUNT_SET_ACTIVE_COMMAND, { params: { id: accountId } });
-      accountsSnapshot = await requestNative(ACCOUNT_LIST_COMMAND);
-      setDebugStep("activate-refresh", `${getAccountsList().length} accounts`);
-      renderAccountsPanel();
-      closeAccountsPanel();
-      const account = getAccountsList().find((item) => item.id === accountId);
-      if (account?.base_url) {
-        setDebugStep("navigate", account.base_url);
-        window.location.href = account.base_url;
+    await requestNative(SET_ACTIVE_COMMAND, { params: { id: accountId } });
+    snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
+    mode = "list";
+    render();
+  }
+
+  async function deleteAccount(accountId) {
+    const ok = window.confirm("Удалить учётку?");
+    if (!ok) return;
+    const wasActive = snapshot.active_account_id === accountId;
+    await requestNative(DELETE_COMMAND, { params: { id: accountId } });
+    snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
+    if (!hasAccounts()) {
+      mode = "add";
+      render();
+      return;
+    }
+
+    mode = "list";
+    render();
+
+    if (wasActive) {
+      const nextAccount = getAccounts()[0] || null;
+      if (nextAccount?.id) {
+        await activateAccount(nextAccount.id);
       }
-    } catch {
-      // ignore until native bridge is ready
-      setDebugStep("activate-failed", String(accountId));
     }
   }
 
-  function renderAccountsPanel() {
-    if (!document.body) return;
-    let panel = document.getElementById(ACCOUNTS_PANEL_ID);
-    if (!panel) {
-      panel = document.createElement("div");
-      panel.id = ACCOUNTS_PANEL_ID;
-      panel.innerHTML = `
-        <div class="pake-accounts-card" role="dialog" aria-modal="true" aria-label="Учетки">
-          <div class="pake-accounts-head">
-            <h2>Учетки</h2>
-            <button type="button" class="pake-accounts-close">Закрыть</button>
-          </div>
-          <div class="pake-accounts-debug">boot</div>
-          <form class="pake-accounts-form">
-            <input name="account-title" type="text" placeholder="Название учетной записи" autocomplete="off" />
-            <input name="account-host" type="text" placeholder="domain.example.com или https://domain.example.com" autocomplete="off" />
-            <button type="submit" class="pake-accounts-submit">Добавить</button>
-          </form>
-          <div class="pake-accounts-list"></div>
-          <div class="pake-accounts-footer">
-            <button type="button" class="pake-accounts-add-toggle">Добавить</button>
-          </div>
-        </div>
-      `;
-      panel.addEventListener("click", (event) => {
-        if (event.target === panel) closeAccountsPanel();
-      });
-      panel.querySelector(".pake-accounts-close")?.addEventListener("click", closeAccountsPanel);
-      panel.querySelector(".pake-accounts-add-toggle")?.addEventListener("click", () => {
-        setDebugStep("footer-click", "showing form");
-        accountsFormVisible = true;
-        renderAccountsPanel();
-        revealAccountsForm();
-      });
-      panel.querySelector(".pake-accounts-form")?.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        setDebugStep("form-submit", "submit event received");
-        await saveAccountFromForm(event.currentTarget);
-      });
-      panel.querySelector(".pake-accounts-form")?.addEventListener("input", (event) => {
-        const target = event.target;
-        if (!target || target.tagName !== "INPUT") return;
-        updateAddButtonState(event.currentTarget);
-      });
-      panel.querySelector(".pake-accounts-form")?.addEventListener("change", (event) => {
-        const target = event.target;
-        if (!target || target.tagName !== "INPUT") return;
-        updateAddButtonState(event.currentTarget);
-      });
-      document.body.appendChild(panel);
-    }
-
-    const list = panel.querySelector(".pake-accounts-list");
-    if (!list) return;
+  function renderList(panel, list) {
+    const accounts = getAccounts();
     list.textContent = "";
 
-    const accounts = getAccountsList();
-    panel.classList.toggle("has-accounts", accounts.length > 0);
-    panel.classList.toggle("show-form", accountsFormVisible || !accounts.length);
-    setDebugStep("render", `${accounts.length} accounts; form=${accountsFormVisible || !accounts.length ? "on" : "off"}`);
     if (!accounts.length) {
-      list.textContent = "Сначала добавь домен, потом откроется обычный вход через веб.";
-      const form = panel.querySelector(".pake-accounts-form");
-      if (form) {
-        updateAddButtonState(form);
-      }
+      list.hidden = true;
       return;
     }
+
+    list.hidden = false;
 
     for (const account of accounts) {
       const row = document.createElement("div");
@@ -311,23 +197,98 @@
       useButton.className = "pake-account-use";
       useButton.textContent = account.active ? "Активна" : "Выбрать";
       useButton.disabled = account.active;
-      useButton.addEventListener("click", async () => {
-        await activateAccount(account.id);
-      });
+      useButton.addEventListener("click", () => activateAccount(account.id));
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "pake-account-delete";
+      deleteButton.textContent = "Удалить";
+      deleteButton.addEventListener("click", () => deleteAccount(account.id));
 
       actions.appendChild(useButton);
+      actions.appendChild(deleteButton);
       row.appendChild(meta);
       row.appendChild(actions);
       list.appendChild(row);
     }
-
-    const form = panel.querySelector(".pake-accounts-form");
-    if (form) {
-      updateAddButtonState(form);
-    }
   }
 
-  function installAccountButton() {
+  function renderAdd(panel) {
+    const form = panel.querySelector(".pake-accounts-form");
+    const list = panel.querySelector(".pake-accounts-list");
+    const addToggle = panel.querySelector(".pake-accounts-add-toggle");
+    const backButton = panel.querySelector(".pake-accounts-back");
+
+    const showAdd = mode === "add" || !hasAccounts();
+    form.hidden = !showAdd && hasAccounts();
+    list.hidden = showAdd;
+    if (addToggle) addToggle.hidden = showAdd || !hasAccounts();
+    if (backButton) backButton.hidden = !(showAdd && hasAccounts());
+
+    if (form) updateSubmitState(form);
+  }
+
+  function render() {
+    if (!document.body) return;
+
+    let panel = document.getElementById(PANEL_ID);
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = PANEL_ID;
+      panel.innerHTML = `
+        <div class="pake-accounts-card" role="dialog" aria-modal="true" aria-label="Учетки">
+          <div class="pake-accounts-head">
+            <h2>Учетки</h2>
+            <button type="button" class="pake-accounts-close">Закрыть</button>
+          </div>
+          <form class="pake-accounts-form">
+            <div class="pake-accounts-form-head">
+              <div class="pake-accounts-form-title">Добавить учетку</div>
+              <button type="button" class="pake-accounts-back">К списку</button>
+            </div>
+            <input name="account-title" type="text" placeholder="Название учетной записи" autocomplete="off" />
+            <input name="account-host" type="text" placeholder="domain.example.com или https://domain.example.com" autocomplete="off" />
+            <button type="submit" class="pake-accounts-submit">Добавить</button>
+          </form>
+          <div class="pake-accounts-list"></div>
+          <div class="pake-accounts-footer">
+            <button type="button" class="pake-accounts-add-toggle">Добавить</button>
+          </div>
+        </div>
+      `;
+
+      panel.addEventListener("click", (event) => {
+        if (event.target === panel) closePanel();
+      });
+      panel.querySelector(".pake-accounts-close")?.addEventListener("click", closePanel);
+      panel.querySelector(".pake-accounts-add-toggle")?.addEventListener("click", () => setMode("add"));
+      panel.querySelector(".pake-accounts-back")?.addEventListener("click", () => setMode("list"));
+      panel.querySelector(".pake-accounts-form")?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await submitAccount(event.currentTarget);
+      });
+      panel.querySelector(".pake-accounts-form")?.addEventListener("input", (event) => {
+        const target = event.target;
+        if (!target || target.tagName !== "INPUT") return;
+        updateSubmitState(event.currentTarget);
+      });
+
+      document.body.appendChild(panel);
+    }
+
+    const list = panel.querySelector(".pake-accounts-list");
+    if (!list) return;
+
+    panel.classList.toggle("has-accounts", hasAccounts());
+    panel.classList.toggle("show-add", mode === "add" || !hasAccounts());
+
+    renderList(panel, list);
+    renderAdd(panel);
+
+    panel.style.display = visible ? "flex" : "none";
+  }
+
+  function installButton() {
     const titlebar = document.getElementById("pake-1forma-titlebar");
     const actionsGroup = titlebar?.querySelector(".pake-actions");
     if (!actionsGroup || actionsGroup.querySelector(".pake-accounts-button")) return true;
@@ -340,18 +301,15 @@
     addButton.setAttribute("aria-label", "Учетки");
     addButton.textContent = "☰";
     addButton.addEventListener("click", () => {
-      if (accountsPanelVisible) {
-        closeAccountsPanel();
+      if (visible) {
+        closePanel();
       } else {
-        openAccountsPanel();
+        openPanel();
       }
     });
 
-    if (historyGroup) {
-      actionsGroup.insertBefore(addButton, historyGroup);
-    } else {
-      actionsGroup.appendChild(addButton);
-    }
+    if (historyGroup) actionsGroup.insertBefore(addButton, historyGroup);
+    else actionsGroup.appendChild(addButton);
     return true;
   }
 
@@ -361,7 +319,7 @@
     const style = document.createElement("style");
     style.id = "pake-1forma-accounts-style";
     style.textContent = `
-      #${ACCOUNTS_PANEL_ID} {
+      #${PANEL_ID} {
         position: fixed;
         inset: 0;
         display: none;
@@ -372,11 +330,11 @@
         z-index: 2147483646;
       }
 
-      #${ACCOUNTS_PANEL_ID}.is-visible {
+      #${PANEL_ID}.is-visible {
         display: flex;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-card {
+      #${PANEL_ID} .pake-accounts-card {
         width: min(720px, calc(100vw - 24px));
         max-height: min(84vh, 820px);
         overflow: auto;
@@ -387,7 +345,7 @@
         padding: 20px;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-head {
+      #${PANEL_ID} .pake-accounts-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -395,12 +353,13 @@
         margin-bottom: 16px;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-head h2 {
+      #${PANEL_ID} .pake-accounts-head h2 {
         margin: 0;
         font-size: 22px;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-close {
+      #${PANEL_ID} .pake-accounts-close,
+      #${PANEL_ID} .pake-accounts-back {
         border: 0;
         border-radius: 10px;
         padding: 8px 12px;
@@ -409,74 +368,47 @@
         cursor: pointer;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-debug {
-        margin: -4px 0 14px;
-        padding: 10px 12px;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.06);
-        color: rgba(248, 250, 252, 0.88);
-        font-size: 12px;
-        line-height: 1.35;
-        white-space: pre-wrap;
-      }
-
-      #${ACCOUNTS_PANEL_ID} form {
-        display: grid;
+      #${PANEL_ID} .pake-accounts-form {
+        display: none;
         grid-template-columns: 1fr 1fr auto;
         gap: 10px;
         margin-bottom: 18px;
       }
 
-      #${ACCOUNTS_PANEL_ID} input {
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.05);
-        color: inherit;
-        padding: 12px 14px;
-        outline: none;
-      }
-
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-submit {
-        border: 0;
-        border-radius: 12px;
-        background: #4a7dff;
-        color: white;
-        padding: 12px 16px;
-        cursor: pointer;
-      }
-
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-submit:disabled {
-        background: rgba(148, 163, 184, 0.36);
-        color: rgba(255, 255, 255, 0.72);
-        cursor: not-allowed;
-        box-shadow: none;
-        transform: none;
-      }
-
-      #${ACCOUNTS_PANEL_ID}.has-accounts .pake-accounts-form {
-        display: none;
-      }
-
-      #${ACCOUNTS_PANEL_ID}.show-form .pake-accounts-form {
+      #${PANEL_ID}.show-add .pake-accounts-form,
+      #${PANEL_ID}:not(.has-accounts) .pake-accounts-form {
         display: grid;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-list {
+      #${PANEL_ID} .pake-accounts-form-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        grid-column: 1 / -1;
+      }
+
+      #${PANEL_ID} .pake-accounts-form-title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      #${PANEL_ID} .pake-accounts-list {
         display: grid;
         gap: 10px;
       }
 
-      #${ACCOUNTS_PANEL_ID}:not(.has-accounts) .pake-accounts-list {
+      #${PANEL_ID}.show-add .pake-accounts-list {
         display: none;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-footer {
+      #${PANEL_ID} .pake-accounts-footer {
         display: flex;
         justify-content: flex-end;
         margin-top: 14px;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-accounts-add-toggle {
+      #${PANEL_ID} .pake-accounts-add-toggle {
         border: 0;
         border-radius: 12px;
         padding: 10px 14px;
@@ -485,11 +417,7 @@
         cursor: pointer;
       }
 
-      #${ACCOUNTS_PANEL_ID}:not(.has-accounts) .pake-accounts-footer {
-        display: none;
-      }
-
-      #${ACCOUNTS_PANEL_ID} .pake-account-row {
+      #${PANEL_ID} .pake-account-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -499,68 +427,95 @@
         background: rgba(255, 255, 255, 0.06);
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-row.active {
+      #${PANEL_ID} .pake-account-row.active {
         outline: 1px solid rgba(74, 125, 255, 0.7);
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-meta {
+      #${PANEL_ID} .pake-account-meta {
         display: grid;
         gap: 2px;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-title {
+      #${PANEL_ID} .pake-account-title {
         font-weight: 600;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-host {
+      #${PANEL_ID} .pake-account-host {
         font-size: 13px;
         opacity: 0.8;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-state {
+      #${PANEL_ID} .pake-account-state {
         font-size: 12px;
         opacity: 0.75;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-actions {
+      #${PANEL_ID} .pake-account-actions {
         display: flex;
         gap: 8px;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-actions button {
+      #${PANEL_ID} .pake-account-actions button {
         border: 0;
         border-radius: 10px;
         padding: 8px 12px;
         cursor: pointer;
       }
 
-      #${ACCOUNTS_PANEL_ID} .pake-account-use {
+      #${PANEL_ID} .pake-account-use {
         background: rgba(74, 125, 255, 0.2);
         color: inherit;
+      }
+
+      #${PANEL_ID} .pake-account-delete {
+        background: rgba(248, 113, 113, 0.18);
+        color: inherit;
+      }
+
+      #${PANEL_ID} .pake-accounts-submit {
+        border: 0;
+        border-radius: 12px;
+        background: #4a7dff;
+        color: white;
+        padding: 12px 16px;
+        cursor: pointer;
+      }
+
+      #${PANEL_ID} .pake-accounts-submit:disabled {
+        background: rgba(148, 163, 184, 0.36);
+        color: rgba(255, 255, 255, 0.72);
+        cursor: not-allowed;
+      }
+
+      #${PANEL_ID} input {
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        color: inherit;
+        padding: 12px 14px;
+        outline: none;
       }
     `;
     document.head.appendChild(style);
   }
 
-  function bootstrapAccounts() {
+  function bootstrap() {
     installStyle();
-    installAccountButton();
-    renderAccountsPanel();
-    loadAccountsSnapshot();
-    setDebugStep("bootstrap");
+    installButton();
+    loadAccounts();
   }
 
   function waitForBootstrap() {
-    if (document.body && installAccountButton()) {
-      bootstrapAccounts();
+    if (document.body && installButton()) {
+      bootstrap();
       return;
     }
     let attempts = 0;
     const timer = window.setInterval(() => {
       attempts += 1;
-      if (document.body && installAccountButton()) {
+      if (document.body && installButton()) {
         window.clearInterval(timer);
-        bootstrapAccounts();
+        bootstrap();
       } else if (attempts >= 80) {
         window.clearInterval(timer);
       }

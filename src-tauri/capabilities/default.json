@@ -10,6 +10,7 @@
     "core:default",
     "core:app:default",
     "allow-list-accounts",
+    "allow-delete-account",
     "allow-upsert-account",
     "allow-set-active-account",
     "shell:allow-open",

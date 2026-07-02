@@ -47,6 +47,7 @@
 - `dist/Первая Форма.dmg` — итоговый DMG;
 - `docs/github-actions-multiplatform-builds.md` — схема сборок macOS, Windows и Linux на GitHub-hosted runners;
 - `docs/github-cli-github-actions-guide.md` — практический гайд по `gh`, Actions и запуску workflow из терминала;
+- `docs/custom-pake-overlay-features.md` — feature map кастомного overlay-слоя над Pake без привязки к конкретной реализации;
 - `docs/build-and-acl-essentials.md` — краткая памятка по build-time ACL, `.pake`-конфигу и критическим файлам сборки;
 - `.github/workflows/ru-1forma-windows.yml` — ручная сборка Windows MSI для `ru.1forma.ru`;
 - `scripts/rebuild-local.sh` — локальная пересборка `.app`, опционально с `--install` и `--dmg`;

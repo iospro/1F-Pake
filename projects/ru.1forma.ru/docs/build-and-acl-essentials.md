@@ -15,6 +15,31 @@ Two different problems appeared during the same build pipeline:
 
 The build failure was not caused by the JS bridge or the Rust `invoke_handler` wiring. The first hard stop was build-time permission resolution.
 
+## Canonical Ownership
+
+There are three different layers in this app, and they must not be mixed together:
+
+1. Build-time ACL
+   - Controlled by `src-tauri/permissions/*.toml`
+   - This is where custom command permissions must exist physically
+   - If a command permission is missing here, `tauri build` fails before runtime
+
+2. Capability wiring
+   - Controlled by `src-tauri/capabilities/default.json`
+   - This binds the app capability to the `pake` webview
+   - It is not a substitute for permission manifests
+
+3. JS <-> Rust bridge
+   - Controlled by injected JS and `#[tauri::command]` Rust signatures
+   - JS must pass args in the exact shape the Rust command expects
+   - The bridge can fail even when ACL is correct if the payload shape is wrong
+
+The practical rule is:
+
+- permissions decide whether the command is allowed;
+- the capability decides which webview is allowed;
+- the bridge decides whether the command arguments are valid.
+
 ## Build-Time Rules
 
 ### 1. Capability files are not enough by themselves
@@ -67,6 +92,8 @@ The relevant files are:
 3. Never assume `.pake/tauri.conf.json` is safe without inspection.
 4. Fix missing build assets in the generated config before blaming Rust or JS.
 5. Keep the Rust `invoke_handler` layer and the JS `window.__TAURI__.core.invoke(...)` bridge simple and separate from build-time ACL problems.
+6. If `tauri build` says a permission is missing, inspect `src-tauri/permissions/` first, not the JS bridge.
+7. If runtime says `invalid args`, inspect the Rust command signature and the JS payload shape first, not ACL.
 
 ## Verification Checklist
 
@@ -81,3 +108,24 @@ Before trusting a build:
 
 Once the permission manifests were added and the `.pake` icon path was corrected, the macOS build completed successfully.
 
+The final account-manager bridge fix was to pass:
+
+- `upsert_account` as `{ params: { title, host } }`
+- `set_active_account` as `{ params: { id } }`
+
+That matches the Rust command signatures and avoids `missing required key params`.
+
+## Quick Checklist
+
+Before chasing a bug, classify it first:
+
+1. `Permission ... not found` means build-time ACL is missing in `src-tauri/permissions/`.
+2. `invalid args` means the JS payload does not match the Rust command signature.
+3. Capability files control webview access, not command existence.
+4. `.pake/tauri.conf.json` is generated and may drift from checked-in platform configs.
+5. If a build fails on an asset path, verify the generated `.pake` file, not only the source config.
+6. If the bridge works in one window but not another, check the webview label and capability binding.
+7. Keep custom command permissions explicit and local to the app repo.
+8. Keep bridge payloads shaped exactly like Rust expects them.
+9. Keep build-time config, runtime bridge, and docs synchronized.
+10. When in doubt, inspect the first real error line, not the final `failed to build app` wrapper.

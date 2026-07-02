@@ -113,6 +113,7 @@ pub fn run_app() {
         .invoke_handler(tauri::generate_handler![
             init_account_bridge,
             app::account_store::list_accounts,
+            app::account_store::delete_account,
             app::invoke::download_file,
             app::account_store::set_active_account,
             app::account_store::upsert_account,
@@ -144,10 +145,11 @@ pub fn run_app() {
                 _multi_window,
             );
             let _ = app::setup::set_global_shortcut(app.app_handle(), activation_shortcut, _init_fullscreen);
-            let window = app::window::set_window(app.app_handle(), &pake_config, &tauri_config)?;
-            if !start_to_tray {
-                let _ = window.show();
-            }
+            let _ = app::window::set_window(
+                app.app_handle(),
+                &pake_config,
+                &tauri_config,
+            )?;
             Ok(())
         })
         .on_window_event(move |_window, _event| {

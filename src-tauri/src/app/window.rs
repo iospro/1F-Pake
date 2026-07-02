@@ -163,7 +163,7 @@ fn build_window_with_label(
         WindowBuildOptions {
             label,
             url,
-            visible: false,
+            visible: true,
             new_window_features: None,
         },
     )
