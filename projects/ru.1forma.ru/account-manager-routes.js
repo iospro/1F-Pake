@@ -184,17 +184,6 @@
     }
   }
 
-  function signalNativeReady() {
-    const emit = window.__TAURI__?.event?.emit;
-    if (!emit) return;
-    emit("ru.1forma.accounts:ready", {
-      source: "account-manager-routes",
-      ready_at: Date.now(),
-    }).catch((error) => {
-      console.warn("[Pake][AccountManager] ready signal failed", error);
-    });
-  }
-
   async function saveAccountFromForm(form) {
     const titleInput = form.querySelector('input[name="account-title"]');
     const hostInput = form.querySelector('input[name="account-host"]');
@@ -599,8 +588,10 @@
     installAccountButton();
     renderAccountsPanel();
     loadAccountsSnapshot();
-    signalNativeReady();
     setDebugStep("bootstrap");
+    invokeNative("init_account_bridge").catch((error) => {
+      console.warn("[Pake][AccountManager] bridge init failed", error);
+    });
   }
 
   function waitForBootstrap() {

@@ -2,7 +2,7 @@
 mod app;
 mod util;
 
-use tauri::{Listener, Manager};
+use tauri::Manager;
 #[cfg(target_os = "linux")]
 const PAKE_LINUX_WEBKIT_SAFE_MODE: &str = "PAKE_LINUX_WEBKIT_SAFE_MODE";
 #[cfg(target_os = "linux")]
@@ -94,15 +94,23 @@ pub fn run_app() {
     let (pake_config, tauri_config) = get_pake_config();
     let tauri_app = tauri::Builder::default();
 
+    let show_system_tray = pake_config.show_system_tray();
     let _init_fullscreen = pake_config.windows[0].fullscreen;
+    let activation_shortcut = pake_config.windows[0].activation_shortcut.clone();
+    let start_to_tray = pake_config.windows[0].start_to_tray && show_system_tray;
     let _multi_window = pake_config.multi_window;
     let _enable_find = pake_config.windows[0].enable_find;
     let app_builder = tauri_app
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_shell::init());
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init());
 
     app_builder
         .invoke_handler(tauri::generate_handler![
+            init_account_bridge,
             app::account_store::list_accounts,
             app::invoke::download_file,
             app::account_store::set_active_account,
@@ -127,8 +135,18 @@ pub fn run_app() {
                     menu::handle_menu_click(app_handle, event.id().as_ref());
                 });
             }
+            let _ = app::setup::set_system_tray(
+                app.app_handle(),
+                show_system_tray,
+                &pake_config.system_tray_path,
+                _init_fullscreen,
+                _multi_window,
+            );
+            let _ = app::setup::set_global_shortcut(app.app_handle(), activation_shortcut, _init_fullscreen);
             let window = app::window::set_window(app.app_handle(), &pake_config, &tauri_config)?;
-            let _ = window.show();
+            if !start_to_tray {
+                let _ = window.show();
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -137,6 +155,13 @@ pub fn run_app() {
             std::process::exit(1);
         })
         .run(|_, _| {});
+}
+
+#[tauri::command]
+fn init_account_bridge(app: tauri::AppHandle) -> Result<(), String> {
+    app::account_store::register_account_bridge(&app);
+    app::account_store::emit_current_accounts_snapshot(&app)?;
+    Ok(())
 }
 
 pub fn run() {
