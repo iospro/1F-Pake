@@ -165,14 +165,7 @@
       snapshot = await requestNative(LIST_COMMAND).catch(() => snapshot);
       if (!hasAccounts()) {
         mode = "add";
-        openPanel();
-        const emptyStateUrl = window.__PAKE_EMPTY_ACCOUNT_STATE_URL__;
-        if (typeof emptyStateUrl === "string" && emptyStateUrl) {
-          const resolvedEmptyUrl = new URL(emptyStateUrl, window.location.href).href;
-          if (window.location.href !== resolvedEmptyUrl) {
-            window.location.href = resolvedEmptyUrl;
-          }
-        }
+        await requestNative("show_empty_account_state");
         return;
       }
 
@@ -216,13 +209,8 @@
       host.className = "pake-account-host";
       host.textContent = account.base_url || account.host || "";
 
-      const state = document.createElement("div");
-      state.className = "pake-account-state";
-      state.textContent = account.credential_state || "new";
-
       meta.appendChild(title);
       meta.appendChild(host);
-      meta.appendChild(state);
 
       const actions = document.createElement("div");
       actions.className = "pake-account-actions";
@@ -297,7 +285,7 @@
           </div>
           <div class="pake-delete-confirm" hidden>
             <div class="pake-delete-confirm-card" role="alertdialog" aria-modal="true" aria-label="Подтверждение удаления">
-              <div class="pake-delete-confirm-title">Удалить учётку?</div>
+              <div class="pake-delete-confirm-title">Удалить домен?</div>
               <div class="pake-delete-confirm-actions">
                 <button type="button" class="pake-delete-confirm-cancel">Отмена</button>
                 <button type="button" class="pake-delete-confirm-ok">Удалить</button>
@@ -563,11 +551,6 @@
       #${PANEL_ID} .pake-account-host {
         font-size: 13px;
         opacity: 0.8;
-      }
-
-      #${PANEL_ID} .pake-account-state {
-        font-size: 12px;
-        opacity: 0.75;
       }
 
       #${PANEL_ID} .pake-account-actions {

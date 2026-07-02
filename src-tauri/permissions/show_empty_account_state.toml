@@ -1,0 +1,11 @@
+# Automatically generated - custom app permission
+
+[[permission]]
+identifier = "allow-show-empty-account-state"
+description = "Enables the show_empty_account_state command without any pre-configured scope."
+commands.allow = ["show_empty_account_state"]
+
+[[permission]]
+identifier = "deny-show-empty-account-state"
+description = "Denies the show_empty_account_state command without any pre-configured scope."
+commands.deny = ["show_empty_account_state"]

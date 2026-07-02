@@ -14,6 +14,16 @@ static BADGE_COUNT: AtomicI64 = AtomicI64::new(0);
 const MAX_BADGE_COUNT: i64 = 99_999;
 const MAX_BADGE_LABEL_CHARS: usize = 16;
 
+fn empty_account_page_url() -> Result<Url, String> {
+    #[cfg(any(target_os = "windows", target_os = "android"))]
+    let raw = "https://tauri.localhost/empty-account.html";
+
+    #[cfg(not(any(target_os = "windows", target_os = "android")))]
+    let raw = "tauri://localhost/empty-account.html";
+
+    Url::parse(raw).map_err(|error| format!("Failed to parse empty-account url: {error}"))
+}
+
 fn normalize_badge_count(count: Option<i64>) -> Option<i64> {
     count.filter(|n| (1..=MAX_BADGE_COUNT).contains(n))
 }
@@ -219,4 +229,13 @@ pub fn clear_cache_and_restart(app: AppHandle) -> Result<(), String> {
     } else {
         Err("Main window not found".to_string())
     }
+}
+
+#[command]
+pub fn show_empty_account_state(app: AppHandle) -> Result<(), String> {
+    let window = app.get_webview_window("pake").ok_or("Window not found")?;
+    let url = empty_account_page_url()?;
+    window
+        .navigate(url)
+        .map_err(|error| format!("Failed to navigate to empty account page: {error}"))
 }

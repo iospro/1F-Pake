@@ -245,6 +245,7 @@ Rules:
 - do not let JS also rewrite the startup URL if Rust already selected it;
 - if the user switches accounts, the selected account must be persisted natively before the webview navigates;
 - if the account list becomes empty, the app should not leave the user staring at a blank shell.
+- after deleting the last account, JS should ask Rust to navigate the current main window to the local empty-account page instead of trying to resolve the URL itself.
 
 This makes the webview behave like a controlled native surface instead of a page that guesses its own startup URL.
 
