@@ -58,13 +58,23 @@ pub fn set_window(
     config: &PakeConfig,
     tauri_config: &Config,
 ) -> tauri::Result<WebviewWindow> {
-    build_window_with_label(app, config, tauri_config, "pake")
+    let start_url = resolve_start_url(app, config)?;
+    build_window_with_label(app, config, tauri_config, "pake", start_url, None)
 }
 
 pub fn open_additional_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let state = app.state::<MultiWindowState>();
     let label = state.next_window_label();
-    build_window_with_label(app, &state.pake_config, &state.tauri_config, &label)
+    let start_url = resolve_new_window_url(app, &state.pake_config)?;
+    let clone_geometry = resolve_new_window_geometry(app);
+    build_window_with_label(
+        app,
+        &state.pake_config,
+        &state.tauri_config,
+        &label,
+        start_url,
+        clone_geometry,
+    )
 }
 
 struct WindowBuildOptions<'a> {
@@ -72,6 +82,7 @@ struct WindowBuildOptions<'a> {
     url: WebviewUrl,
     visible: bool,
     new_window_features: Option<NewWindowFeatures>,
+    clone_geometry: Option<WindowCloneGeometry>,
 }
 
 fn open_requested_window(
@@ -92,6 +103,7 @@ fn open_requested_window(
             url: WebviewUrl::External(target_url.clone()),
             visible: true,
             new_window_features: Some(features),
+            clone_geometry: None,
         },
     )?;
 
@@ -108,7 +120,6 @@ pub fn open_additional_window_safe(app: &AppHandle) {
         let app_handle = app.clone();
         std::thread::spawn(move || {
             if let Ok(window) = open_additional_window(&app_handle) {
-                let _ = window.show();
                 let _ = window.set_focus();
             }
         });
@@ -117,7 +128,6 @@ pub fn open_additional_window_safe(app: &AppHandle) {
     #[cfg(not(target_os = "windows"))]
     {
         if let Ok(window) = open_additional_window(app) {
-            let _ = window.show();
             let _ = window.set_focus();
         }
     }
@@ -128,46 +138,9 @@ fn build_window_with_label(
     config: &PakeConfig,
     tauri_config: &Config,
     label: &str,
+    start_url: WebviewUrl,
+    clone_geometry: Option<WindowCloneGeometry>,
 ) -> tauri::Result<WebviewWindow> {
-    let window_config = config.windows.first().ok_or_else(|| {
-        tauri::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "pake.json must define at least one window configuration",
-        ))
-    })?;
-    let url = match window_config.url_type.as_str() {
-        "web" => {
-            let parsed = window_config.url.parse().map_err(|err| {
-                tauri::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!(
-                        "Invalid 'web' url '{}' in pake.json: {err}",
-                        window_config.url
-                    ),
-                ))
-            })?;
-            WebviewUrl::App(parsed)
-        }
-        "local" => WebviewUrl::App(PathBuf::from(&window_config.url)),
-        other => {
-            return Err(tauri::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("url_type must be 'web' or 'local', got '{other}'"),
-            )));
-        }
-    };
-
-    let start_url = if !account_store::has_accounts(app) {
-        WebviewUrl::App(PathBuf::from("empty-account.html"))
-    } else if label == "pake" {
-        account_store::active_account_base_url(app)
-            .and_then(|value| Url::from_str(&value).ok())
-            .map(WebviewUrl::External)
-            .unwrap_or(url)
-    } else {
-        url
-    };
-
     build_window(
         app,
         config,
@@ -177,8 +150,57 @@ fn build_window_with_label(
             url: start_url,
             visible: true,
             new_window_features: None,
+            clone_geometry,
         },
     )
+}
+
+fn resolve_new_window_url(app: &AppHandle, config: &PakeConfig) -> tauri::Result<WebviewUrl> {
+    if let Some(focused_webview) = app
+        .webview_windows()
+        .into_values()
+        .find(|window| window.is_focused().unwrap_or(false))
+    {
+        if let Ok(current_url) = focused_webview.url() {
+            return Ok(WebviewUrl::External(current_url));
+        }
+    }
+
+    resolve_start_url(app, config)
+}
+
+#[derive(Clone, Copy)]
+struct WindowCloneGeometry {
+    position: Option<(f64, f64)>,
+    inner_size: Option<(f64, f64)>,
+    maximized: bool,
+    fullscreen: bool,
+}
+
+fn resolve_new_window_geometry(app: &AppHandle) -> Option<WindowCloneGeometry> {
+    let focused = app
+        .webview_windows()
+        .into_values()
+        .find(|window| window.is_focused().unwrap_or(false))?;
+
+    let scale_factor = focused.scale_factor().unwrap_or(1.0);
+    let position = focused
+        .outer_position()
+        .ok()
+        .map(|value| value.to_logical::<f64>(scale_factor))
+        .map(|value| (value.x, value.y));
+    let inner_size = focused
+        .inner_size()
+        .ok()
+        .map(|value| value.to_logical::<f64>(scale_factor))
+        .map(|value| (value.width, value.height));
+
+    Some(WindowCloneGeometry {
+        position,
+        inner_size,
+        maximized: focused.is_maximized().unwrap_or(false),
+        fullscreen: focused.is_fullscreen().unwrap_or(false),
+    })
 }
 
 fn build_window(
@@ -192,6 +214,7 @@ fn build_window(
         url,
         visible,
         new_window_features,
+        clone_geometry,
     } = opts;
     let package_name = tauri_config
         .product_name
@@ -229,6 +252,20 @@ fn build_window(
         .resizable(window_config.resizable)
         .maximized(window_config.maximize);
 
+    if let Some(clone_geometry) = clone_geometry {
+        if let Some((x, y)) = clone_geometry.position {
+            window_builder = window_builder.position(x, y);
+        }
+        if let Some((width, height)) = clone_geometry.inner_size {
+            window_builder = window_builder.inner_size(width, height);
+        }
+        if clone_geometry.fullscreen {
+            window_builder = window_builder.fullscreen(true);
+        } else if clone_geometry.maximized {
+            window_builder = window_builder.maximized(true);
+        }
+    }
+
     #[cfg(target_os = "windows")]
     {
         let scale_factor = app
@@ -244,7 +281,17 @@ fn build_window(
 
     #[cfg(not(target_os = "windows"))]
     {
-        window_builder = window_builder.inner_size(window_config.width, window_config.height);
+        let mut target_width = window_config.width;
+        let mut target_height = window_config.height;
+
+        if let Ok(Some(monitor)) = app.primary_monitor() {
+            let scale_factor = monitor.scale_factor();
+            let available = monitor.size().to_logical::<f64>(scale_factor);
+            target_width = target_width.min(available.width * 0.98);
+            target_height = target_height.min(available.height * 0.98);
+        }
+
+        window_builder = window_builder.inner_size(target_width, target_height);
     }
 
     window_builder = window_builder
@@ -498,6 +545,45 @@ fn build_window(
     window_builder = window_builder.on_navigation(|_| true);
 
     window_builder.build()
+}
+
+fn resolve_start_url(app: &AppHandle, config: &PakeConfig) -> tauri::Result<WebviewUrl> {
+    if !account_store::has_accounts(app) {
+        return Ok(WebviewUrl::App(PathBuf::from("empty-account.html")));
+    }
+
+    let window_config = config.windows.first().ok_or_else(|| {
+        tauri::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "pake.json must define at least one window configuration",
+        ))
+    })?;
+
+    if let Some(base_url) = account_store::active_account_base_url(app) {
+        if let Ok(url) = Url::from_str(&base_url) {
+            return Ok(WebviewUrl::External(url));
+        }
+    }
+
+    match window_config.url_type.as_str() {
+        "web" => {
+            let parsed = window_config.url.parse().map_err(|err| {
+                tauri::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "Invalid 'web' url '{}' in pake.json: {err}",
+                        window_config.url
+                    ),
+                ))
+            })?;
+            Ok(WebviewUrl::App(parsed))
+        }
+        "local" => Ok(WebviewUrl::App(PathBuf::from(&window_config.url))),
+        other => Err(tauri::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("url_type must be 'web' or 'local', got '{other}'"),
+        ))),
+    }
 }
 
 #[cfg(all(test, target_os = "windows"))]

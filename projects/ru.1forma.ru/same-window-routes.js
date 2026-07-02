@@ -485,7 +485,6 @@
         display: flex;
         align-items: center;
         min-width: 0;
-        -webkit-app-region: no-drag;
       }
 
       #${TITLEBAR_ID} .pake-title-group {
@@ -539,6 +538,7 @@
         font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
         transition: background 120ms ease, transform 120ms ease, opacity 120ms ease;
+        -webkit-app-region: no-drag;
       }
 
       #${TITLEBAR_ID} button:hover:not(:disabled) {
@@ -795,6 +795,18 @@
       titlebar.appendChild(tabsContainer);
       titlebar.appendChild(actionsGroup);
       document.documentElement.appendChild(titlebar);
+
+      const startDragging = (event) => {
+        if (event.target.closest("button, input, textarea, select, a")) return;
+        if (event.type === "mousedown" && event.buttons !== 1) return;
+        const appWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+        if (!appWindow?.startDragging) return;
+        event.preventDefault();
+        appWindow.startDragging();
+      };
+
+      titlebar.addEventListener("mousedown", startDragging);
+      titlebar.addEventListener("touchstart", startDragging, { passive: false });
     }
 
     updateHistoryButtons();

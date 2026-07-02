@@ -18,6 +18,18 @@ The app should store multiple accounts natively and switch between them without 
 - do not require manual token entry by the user;
 - do not redesign the native tab/window architecture in this task.
 
+## Current Architectural Contract
+
+The current implementation has already locked in these rules:
+
+- Rust decides the initial page for the main `WebviewWindow`.
+- If the native account store is empty, Rust loads the local `empty-account.html` asset.
+- If there is an active account, Rust injects that account's base URL directly during window creation.
+- JS does not invent the startup URL on its own.
+- The account manager UI is an injected overlay layer, not a site feature.
+- Native account writes must be followed by a fresh snapshot so the UI state stays in sync with the store.
+- The account bridge is handshake-based: JS installs listeners first, then calls `init_account_bridge`, and Rust only registers the native listener after that.
+
 ## User Flows
 
 ### First Launch

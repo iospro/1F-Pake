@@ -18,6 +18,21 @@ Current bridge contract in the checked-in baseline:
 - `account-manager-routes.js` uses the same event-bridge pattern through `ru.1forma.accounts:request` and `ru.1forma.accounts:response`.
 - The native tab layer is backed by Rust `WebviewWindow` orchestration, not by `invoke(...)` calls.
 
+## What Was Stabilized In The Recent 1Forma Work
+
+The current codebase reflects these facts:
+
+- Rust owns the startup URL for the main window.
+- When the native account store is empty, Rust returns the local `empty-account.html` asset instead of a remote page or `about:blank`.
+- When an active account exists, Rust injects that account's base URL directly in `window.rs`.
+- The injected UI is split into two layers:
+  - `same-window-routes.js` for shared shell behavior, navigation, tabs, and the top chrome;
+  - `account-manager-routes.js` for the account list/add flow and its native bridge.
+- The account bridge is late-bound: JS installs listeners first, then calls `init_account_bridge`, and Rust registers the native listener only after that handshake.
+- Account writes must end with a fresh native snapshot so the JS UI does not drift away from the store.
+- `New Window` now goes through Rust and creates a real extra `WebviewWindow`.
+- The new-window path currently copies the active URL and window geometry from the focused window, but drag and size feel are still unstable and need a follow-up pass.
+
 ## How Pake Is Wired Internally
 
 ### CLI And Build Pipeline
@@ -280,6 +295,18 @@ Risks:
 - Linux/Wayland and macOS WKWebView lifecycle need extra caution.
 
 If this path is chosen, it must be built as a small feature-gated prototype, not dropped into the main runtime in one shot.
+
+## New Window Follow-up Plan
+
+The `New Window` work is not considered finished yet. The remaining plan is:
+
+1. Keep `New Window` routed through Rust, not through JS-side page cloning.
+2. Preserve Dock/reopen as the separate "show existing window" path.
+3. Continue using the focused webview as the source of truth for copied URL and window state.
+4. Stabilize macOS drag behavior on the overlay/titlebar layer separately from window-copy logic.
+5. Re-check whether `inner_size` or `outer_size` should be the canonical geometry source if the clone still jumps between smaller and larger frames.
+6. If the cloned window frame is still inconsistent, split the builder path for main window vs copied window instead of trying to force one shared geometry contract.
+7. Only after geometry and drag are stable should we decide whether `New Window` also needs to clone title, focus state, or tab snapshot state.
 
 ## Why The Previous Child-Webview Attempt Could Collapse The Window
 
