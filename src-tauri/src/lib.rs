@@ -2,7 +2,9 @@
 mod app;
 mod util;
 
-use tauri::{Manager, RunEvent};
+use tauri::Manager;
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
 #[cfg(target_os = "linux")]
 const PAKE_LINUX_WEBKIT_SAFE_MODE: &str = "PAKE_LINUX_WEBKIT_SAFE_MODE";
 #[cfg(target_os = "linux")]
@@ -10,7 +12,9 @@ const WEBKIT_DISABLE_DMABUF_RENDERER: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
 #[cfg(target_os = "linux")]
 const WEBKIT_DISABLE_COMPOSITING_MODE: &str = "WEBKIT_DISABLE_COMPOSITING_MODE";
 
-use app::{menu, window::MultiWindowState};
+#[cfg(target_os = "macos")]
+use app::menu;
+use app::window::MultiWindowState;
 use util::get_pake_config;
 
 #[cfg(any(target_os = "linux", test))]
