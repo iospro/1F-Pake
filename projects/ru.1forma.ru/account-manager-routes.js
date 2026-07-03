@@ -324,6 +324,14 @@
       panel.addEventListener("click", (event) => {
         if (event.target === panel) closePanel();
       });
+      panel.addEventListener("pointerdown", (event) => {
+        const target = event.target;
+        if (!target || !target.closest) return;
+        const button = target.closest("button, input, textarea, select");
+        if (!button) {
+          setDebugMessage(`panel: pointerdown on ${target.tagName || "unknown"}`);
+        }
+      }, true);
       panel.querySelector(".pake-accounts-close")?.addEventListener("click", closePanel);
       panel.querySelector(".pake-accounts-add-toggle")?.addEventListener("click", () => setMode("add"));
       panel.querySelector(".pake-accounts-submit")?.addEventListener("pointerdown", () => {
