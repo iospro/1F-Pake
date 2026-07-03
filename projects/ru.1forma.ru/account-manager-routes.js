@@ -9,6 +9,16 @@
   let visible = false;
   let mode = "list";
   let deletePendingAccountId = null;
+  let debugMessage = "";
+
+  function setDebugMessage(message) {
+    debugMessage = String(message || "");
+    const debugNode = document.querySelector(`#${PANEL_ID} .pake-accounts-debug`);
+    if (debugNode) {
+      debugNode.textContent = debugMessage;
+      debugNode.hidden = !debugMessage;
+    }
+  }
 
   function requestNative(action, params = {}) {
     const invoke = window.__TAURI__?.core?.invoke;
@@ -123,11 +133,13 @@
 
     const submitButton = form.querySelector(".pake-accounts-submit");
     if (submitButton) submitButton.disabled = true;
+    setDebugMessage("submit_account: invoke started");
 
     try {
       const payload = await requestNative(UPSERT_COMMAND, {
         params: { title, host },
       });
+      setDebugMessage("submit_account: invoke success");
       if (payload?.id) {
         await activateAccount(payload.id);
         return;
@@ -284,13 +296,14 @@
             <h2>Домены</h2>
             <button type="button" class="pake-accounts-close">Закрыть</button>
           </div>
+          <div class="pake-accounts-debug" hidden></div>
           <form class="pake-accounts-form">
             <div class="pake-accounts-form-head">
               <div class="pake-accounts-form-title">Добавить домен</div>
             </div>
             <input name="account-title" type="text" placeholder="Название учетной записи" autocomplete="off" />
             <input name="account-host" type="text" placeholder="domain.example.com или https://domain.example.com" autocomplete="off" />
-            <button type="submit" class="pake-accounts-submit">Добавить</button>
+            <button type="button" class="pake-accounts-submit">Добавить</button>
           </form>
           <div class="pake-accounts-list"></div>
           <div class="pake-accounts-footer">
@@ -313,6 +326,18 @@
       });
       panel.querySelector(".pake-accounts-close")?.addEventListener("click", closePanel);
       panel.querySelector(".pake-accounts-add-toggle")?.addEventListener("click", () => setMode("add"));
+      panel.querySelector(".pake-accounts-submit")?.addEventListener("pointerdown", () => {
+        setDebugMessage("submit_button: pointerdown");
+      });
+      panel.querySelector(".pake-accounts-submit")?.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDebugMessage("submit_button: click");
+        const form = panel.querySelector(".pake-accounts-form");
+        if (form) {
+          await submitAccount(form);
+        }
+      });
       panel.querySelector(".pake-delete-confirm-cancel")?.addEventListener("click", () => {
         deletePendingAccountId = null;
         render();
@@ -322,11 +347,7 @@
       });
       panel.querySelector(".pake-accounts-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();
-        console.info("[Pake] account-manager submit", {
-          mode,
-          visible,
-          hasAccounts: hasAccounts(),
-        });
+        setDebugMessage("form: submit");
         await submitAccount(event.currentTarget);
       });
       panel.querySelector(".pake-accounts-form")?.addEventListener("input", (event) => {
@@ -412,6 +433,18 @@
         color: #f8fafc;
         box-shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
         padding: 20px;
+      }
+
+      #${PANEL_ID} .pake-accounts-debug {
+        display: block;
+        margin-bottom: 12px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(74, 125, 255, 0.12);
+        color: rgba(226, 232, 240, 0.95);
+        font-size: 12px;
+        line-height: 1.35;
+        user-select: text;
       }
 
       #${PANEL_ID} .pake-accounts-head {
@@ -606,6 +639,9 @@
         color: white;
         padding: 12px 16px;
         cursor: pointer;
+        position: relative;
+        z-index: 2;
+        pointer-events: auto;
       }
 
       #${PANEL_ID} .pake-accounts-submit:disabled {
