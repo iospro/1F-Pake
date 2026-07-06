@@ -60,6 +60,7 @@ jobs:
           $args += "--multi-window"
           $args += "--targets", "x64"
           $args += "--inject", "projects/ru.1forma.ru/same-window-routes.js"
+          $args += "--inject", "projects/ru.1forma.ru/account-manager-routes.js"
 
           node dist/cli.js $args
 
