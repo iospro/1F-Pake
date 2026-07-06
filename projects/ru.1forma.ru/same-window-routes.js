@@ -130,10 +130,7 @@
         -webkit-backdrop-filter: blur(14px);
         pointer-events: auto;
         font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-
-      #${DIAGNOSTICS_ID}.is-hidden {
-        opacity: 0.24;
+        display: none !important;
       }
 
       #${DIAGNOSTICS_ID} .pake-diag-head {
@@ -237,7 +234,7 @@
           <div class="pake-diag-title">Diagnostics</div>
           <div class="pake-diag-actions">
             <button type="button" class="pake-diag-clear">Clear</button>
-            <button type="button" class="pake-diag-toggle">Hide</button>
+            <button type="button" class="pake-diag-toggle">Show</button>
           </div>
         </div>
         <div class="pake-diag-list" aria-live="polite"></div>
@@ -277,9 +274,6 @@
       while (list.children.length > DIAGNOSTICS_MAX_ROWS) {
         list.removeChild(list.firstElementChild);
       }
-      overlay.classList.remove("is-hidden");
-      const toggle = overlay.querySelector(".pake-diag-toggle");
-      if (toggle) toggle.textContent = "Hide";
       list.scrollTop = list.scrollHeight;
     }
 
@@ -1331,7 +1325,9 @@
       }
 
       const anchor = event.target && event.target.closest ? event.target.closest("a") : null;
-      const href = anchor.href || anchor.getAttribute("href");
+      if (!anchor) return;
+
+      const href = anchor.getAttribute("href") || anchor.href || "";
       if (!href) return;
 
       if (shouldOpenExternalBrowser(anchor)) {
