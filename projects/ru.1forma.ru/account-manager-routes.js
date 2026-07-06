@@ -10,6 +10,8 @@
   let mode = "list";
   let deletePendingAccountId = null;
   let debugMessage = "";
+  let loadAccountsAttempts = 0;
+  const MAX_LOAD_ACCOUNTS_ATTEMPTS = 24;
 
   function setDebugMessage(message) {
     debugMessage = String(message || "");
@@ -17,6 +19,13 @@
     if (debugNode) {
       debugNode.textContent = debugMessage;
       debugNode.hidden = !debugMessage;
+    }
+  }
+
+  function diagLog(level, message, detail) {
+    const append = window.__PAKE_DIAGNOSTICS_APPEND__;
+    if (typeof append === "function") {
+      append(level, message, detail);
     }
   }
 
@@ -69,6 +78,10 @@
     return new URL(fallback, window.location.href).href;
   }
 
+  function isEmptyAccountStatePage() {
+    return window.location.pathname.endsWith("/empty-account.html");
+  }
+
   function updateSubmitState(form) {
     const titleInput = form.querySelector('input[name="account-title"]');
     const hostInput = form.querySelector('input[name="account-host"]');
@@ -107,6 +120,7 @@
 
   async function loadAccounts() {
     try {
+      loadAccountsAttempts = 0;
       snapshot = (await requestNative(LIST_COMMAND)) || snapshot;
       if (!hasAccounts()) {
         mode = "add";
@@ -118,7 +132,21 @@
       visible = false;
       render();
     } catch {
-      // ignore until bridge is ready
+      loadAccountsAttempts += 1;
+      const detail = `list_accounts failed on attempt ${loadAccountsAttempts}`;
+      setDebugMessage(detail);
+      diagLog("error", detail);
+
+      if (loadAccountsAttempts < MAX_LOAD_ACCOUNTS_ATTEMPTS) {
+        window.setTimeout(loadAccounts, 250);
+        return;
+      }
+
+      if (isEmptyAccountStatePage()) {
+        visible = true;
+        mode = "add";
+        render();
+      }
     }
   }
 
@@ -675,6 +703,11 @@
   function bootstrap() {
     installStyle();
     installButton();
+    if (isEmptyAccountStatePage()) {
+      visible = true;
+      mode = "add";
+    }
+    render();
     loadAccounts();
   }
 

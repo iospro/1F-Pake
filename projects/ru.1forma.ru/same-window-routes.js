@@ -9,6 +9,9 @@
   const HISTORY_MAX_KEY = "pake_history_max";
   const PENDING_PUSH_KEY = "pake_history_pending_push";
   const TICKERS_URL_PATTERNS = ["/tickers/all", "/tickers/system"];
+  const DIAGNOSTICS_ID = "pake-webview-diagnostics";
+  const DIAGNOSTICS_STYLE_ID = "pake-webview-diagnostics-style";
+  const DIAGNOSTICS_MAX_ROWS = 40;
 
   // Shared shell layer only: tabs, navigation, titlebar, and global webview patches.
   // Account manager UI lives in account-manager-routes.js and uses its own bridge.
@@ -99,6 +102,273 @@
     const invoke = window.__TAURI__?.core?.invoke;
     if (!invoke) return Promise.reject(new Error("Tauri bridge not ready"));
     return invoke(name, payload);
+  }
+
+  function ensureDiagnosticsStyle() {
+    if (document.getElementById(DIAGNOSTICS_STYLE_ID)) return;
+
+    const style = document.createElement("style");
+    style.id = DIAGNOSTICS_STYLE_ID;
+    style.textContent = `
+      #${DIAGNOSTICS_ID} {
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        width: min(520px, calc(100vw - 24px));
+        max-height: min(42vh, 360px);
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 8px;
+        z-index: 2147483647;
+        padding: 10px;
+        box-sizing: border-box;
+        border-radius: 16px;
+        background: rgba(15, 23, 42, 0.92);
+        color: #e2e8f0;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        pointer-events: auto;
+        font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      #${DIAGNOSTICS_ID}.is-hidden {
+        opacity: 0.24;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-clear,
+      #${DIAGNOSTICS_ID} .pake-diag-toggle {
+        appearance: none;
+        border: 0;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.08);
+        color: inherit;
+        padding: 6px 10px;
+        cursor: pointer;
+        font: inherit;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-list {
+        display: grid;
+        gap: 6px;
+        overflow: auto;
+        min-height: 0;
+        padding-right: 4px;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-item {
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.06);
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-item[data-level="error"] {
+        background: rgba(239, 68, 68, 0.18);
+        color: #fecaca;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-item[data-level="warn"] {
+        background: rgba(245, 158, 11, 0.16);
+        color: #fde68a;
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-item[data-level="info"] {
+        background: rgba(59, 130, 246, 0.12);
+      }
+
+      #${DIAGNOSTICS_ID} .pake-diag-item[data-level="debug"] {
+        opacity: 0.9;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function formatDiagnosticValue(value) {
+    if (value instanceof Error) {
+      return value.stack || `${value.name || "Error"}: ${value.message || String(value)}`;
+    }
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+      return String(value);
+    }
+    if (value === null) return "null";
+    if (value === undefined) return "undefined";
+    if (typeof value === "function") return value.name ? `[Function ${value.name}]` : "[Function]";
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  function ensureDiagnosticsOverlay() {
+    if (window.__PAKE_DIAGNOSTICS_INSTALLED__) return;
+    if (!document.documentElement || !document.head) return;
+
+    ensureDiagnosticsStyle();
+
+    let overlay = document.getElementById(DIAGNOSTICS_ID);
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = DIAGNOSTICS_ID;
+      overlay.innerHTML = `
+        <div class="pake-diag-head">
+          <div class="pake-diag-title">Diagnostics</div>
+          <div class="pake-diag-actions">
+            <button type="button" class="pake-diag-clear">Clear</button>
+            <button type="button" class="pake-diag-toggle">Hide</button>
+          </div>
+        </div>
+        <div class="pake-diag-list" aria-live="polite"></div>
+      `;
+      document.documentElement.appendChild(overlay);
+
+      overlay.querySelector(".pake-diag-clear")?.addEventListener("click", () => {
+        const list = overlay.querySelector(".pake-diag-list");
+        if (list) list.textContent = "";
+      });
+
+      overlay.querySelector(".pake-diag-toggle")?.addEventListener("click", (event) => {
+        const nextHidden = !overlay.classList.contains("is-hidden");
+        overlay.classList.toggle("is-hidden", nextHidden);
+        event.currentTarget.textContent = nextHidden ? "Show" : "Hide";
+      });
+    }
+
+    const list = overlay.querySelector(".pake-diag-list");
+    const originalConsole = window.__PAKE_ORIGINAL_CONSOLE__ || window.console;
+    const original = {
+      log: originalConsole.log?.bind(originalConsole),
+      info: originalConsole.info?.bind(originalConsole),
+      warn: originalConsole.warn?.bind(originalConsole),
+      error: originalConsole.error?.bind(originalConsole),
+      debug: originalConsole.debug?.bind(originalConsole),
+    };
+
+    function append(level, message, detail) {
+      if (!list) return;
+      const item = document.createElement("div");
+      item.className = "pake-diag-item";
+      item.dataset.level = level;
+      const timestamp = new Date().toLocaleTimeString();
+      item.textContent = `[${timestamp}] ${message}${detail ? `\n${detail}` : ""}`;
+      list.appendChild(item);
+      while (list.children.length > DIAGNOSTICS_MAX_ROWS) {
+        list.removeChild(list.firstElementChild);
+      }
+      overlay.classList.remove("is-hidden");
+      const toggle = overlay.querySelector(".pake-diag-toggle");
+      if (toggle) toggle.textContent = "Hide";
+      list.scrollTop = list.scrollHeight;
+    }
+
+    function proxyConsole(level, args) {
+      const text = args.map(formatDiagnosticValue).join(" ");
+      append(level, text);
+      const fn = original[level];
+      if (typeof fn === "function") {
+        fn(...args);
+      }
+    }
+
+    window.__PAKE_DIAGNOSTICS_APPEND__ = append;
+    window.__PAKE_DIAGNOSTICS_INSTALLED__ = true;
+    window.__PAKE_ORIGINAL_CONSOLE__ = originalConsole;
+    window.__PAKE_ORIGINAL_LOG__ = original.log;
+    window.__PAKE_ORIGINAL_INFO__ = original.info;
+    window.__PAKE_ORIGINAL_WARN__ = original.warn;
+    window.__PAKE_ORIGINAL_ERROR__ = original.error;
+    window.__PAKE_ORIGINAL_DEBUG__ = original.debug;
+
+    if (!window.__PAKE_CONSOLE_PROXY_INSTALLED__) {
+      window.__PAKE_CONSOLE_PROXY_INSTALLED__ = true;
+      window.console.log = (...args) => proxyConsole("log", args);
+      window.console.info = (...args) => proxyConsole("info", args);
+      window.console.warn = (...args) => proxyConsole("warn", args);
+      window.console.error = (...args) => proxyConsole("error", args);
+      window.console.debug = (...args) => proxyConsole("debug", args);
+    }
+
+    if (!window.__PAKE_ERROR_LISTENERS_INSTALLED__) {
+      window.__PAKE_ERROR_LISTENERS_INSTALLED__ = true;
+      window.addEventListener("error", (event) => {
+        const errorDetail = event.error ? formatDiagnosticValue(event.error) : "";
+        append("error", event.message || "window.error", errorDetail);
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        append("error", "unhandledrejection", formatDiagnosticValue(event.reason));
+      });
+    }
+  }
+
+  function diagLog(level, message, detail) {
+    const append = window.__PAKE_DIAGNOSTICS_APPEND__;
+    if (typeof append === "function") {
+      append(level, message, detail);
+    }
+  }
+
+  function openAccountManagerFromEmptyState() {
+    const opener = window.__PAKE_OPEN_ACCOUNT_MANAGER__;
+    if (typeof opener === "function") {
+      opener();
+      return true;
+    }
+
+    const event = new CustomEvent("pake:open-account-manager", { bubbles: true });
+    window.dispatchEvent(event);
+    return true;
+  }
+
+  function installEmptyStateButtonHandler() {
+    if (window.__PAKE_EMPTY_STATE_BUTTON_HANDLER_INSTALLED__) return;
+    window.__PAKE_EMPTY_STATE_BUTTON_HANDLER_INSTALLED__ = true;
+
+    document.addEventListener(
+      "pointerdown",
+      (event) => {
+        const target = event.target && event.target.closest ? event.target.closest(".pake-empty-account-button") : null;
+        if (!target) return;
+        target.style.borderColor = "#ef4444";
+        target.style.outline = "2px solid rgba(239, 68, 68, 0.55)";
+        diagLog("info", "empty-account-button:pointerdown");
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        const target = event.target && event.target.closest ? event.target.closest(".pake-empty-account-button") : null;
+        if (!target) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        diagLog("info", "empty-account-button:click -> open account manager");
+        openAccountManagerFromEmptyState();
+      },
+      true,
+    );
   }
 
   function installRetinaDisplayMediaPatch() {
@@ -1054,6 +1324,12 @@
   document.addEventListener(
     "click",
     (event) => {
+      const emptyButton =
+        event.target && event.target.closest ? event.target.closest(".pake-empty-account-button") : null;
+      if (emptyButton) {
+        return;
+      }
+
       const anchor = event.target && event.target.closest ? event.target.closest("a") : null;
       const href = anchor.href || anchor.getAttribute("href");
       if (!href) return;
@@ -1117,6 +1393,8 @@
 
   window.addEventListener("pageshow", () => {
     ensureHistoryState();
+    ensureDiagnosticsOverlay();
+    installEmptyStateButtonHandler();
     ensureTitlebar();
     ensureEmptyAccountsPlaceholder();
     syncDockBadgeFromTitle();
@@ -1124,6 +1402,8 @@
 
   window.addEventListener("DOMContentLoaded", () => {
     ensureHistoryState();
+    ensureDiagnosticsOverlay();
+    installEmptyStateButtonHandler();
     ensureTitlebar();
     ensureEmptyAccountsPlaceholder();
     syncDockBadgeFromTitle();
@@ -1131,6 +1411,8 @@
 
   window.addEventListener("load", () => {
     ensureHistoryState();
+    ensureDiagnosticsOverlay();
+    installEmptyStateButtonHandler();
     ensureTitlebar();
     ensureEmptyAccountsPlaceholder();
     syncDockBadgeFromTitle();
@@ -1138,6 +1420,8 @@
 
   ensureHistoryState();
   patchRetinaDisplayMedia();
+  ensureDiagnosticsOverlay();
+  installEmptyStateButtonHandler();
   ensureTitlebar();
   ensureEmptyAccountsPlaceholder();
   observeTitleBadge();
