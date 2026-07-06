@@ -1,0 +1,15 @@
+{
+  "url": "https://ru.1forma.ru",
+  "width": 1600,
+  "height": 1000,
+  "hideTitleBar": true,
+  "sharedFlags": [
+    "--multi-window",
+    "--camera",
+    "--microphone"
+  ],
+  "inject": [
+    "projects/ru.1forma.ru/same-window-routes.js",
+    "projects/ru.1forma.ru/account-manager-routes.js"
+  ]
+}

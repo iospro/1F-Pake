@@ -53,16 +53,7 @@ jobs:
       - name: Build 1Forma MSI
         shell: pwsh
         run: |
-          $args = "${{ inputs.url }}", "--name", "${{ inputs.name }}"
-          $args += "--title", "${{ inputs.title }}"
-          $args += "--width", "${{ inputs.width }}"
-          $args += "--height", "${{ inputs.height }}"
-          $args += "--multi-window"
-          $args += "--targets", "x64"
-          $args += "--inject", "projects/ru.1forma.ru/same-window-routes.js"
-          $args += "--inject", "projects/ru.1forma.ru/account-manager-routes.js"
-
-          node dist/cli.js $args
+          node projects/ru.1forma.ru/scripts/run-pake-build.js --url "${{ inputs.url }}" --name "${{ inputs.name }}" --title "${{ inputs.title }}" --width "${{ inputs.width }}" --height "${{ inputs.height }}" --targets x64
 
           New-Item -Path "output\windows" -ItemType Directory -Force | Out-Null
 

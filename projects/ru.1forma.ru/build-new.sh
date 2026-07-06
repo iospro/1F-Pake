@@ -106,16 +106,9 @@ remove_app_bundle
 mkdir -p "$APP_STAGING_DIR"
 
 cd "$PAKE_CLI_ROOT"
-PAKE_CREATE_APP=1 node "$PAKE_CLI_ENTRY" https://ru.1forma.ru \
+PAKE_CREATE_APP=1 node "$ROOT/scripts/run-pake-build.js" \
   --name "$APP_SLUG" \
-  --width 1600 \
-  --height 1000 \
-  --hide-title-bar \
-  --multi-window \
-  --camera \
-  --microphone \
-  --inject "$ROOT/same-window-routes.js" \
-  --inject "$ROOT/account-manager-routes.js"
+  --title "Первая Форма"
 
 rm -rf "$APP_STAGING_DIR/$APP_SLUG.app"
 cp -R "$PAKE_OUTPUT_APP" "$APP_STAGING_DIR/$APP_SLUG.app"
