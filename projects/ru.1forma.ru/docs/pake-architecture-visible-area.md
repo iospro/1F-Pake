@@ -156,7 +156,7 @@ The project injection files are `same-window-routes.js` and `account-manager-rou
 It currently does four major jobs:
 
 1. Dock badge sync from title and ticker API responses.
-2. Same-window routing for internal 1Forma links and VKS/video links.
+2. Same-window routing for links that stay on the current 1Forma domain, plus external browser handoff for links that leave it.
 3. Custom macOS overlay titlebar.
 4. Native-tab UI that talks to Rust through the event bridge.
 

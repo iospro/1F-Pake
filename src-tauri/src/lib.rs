@@ -121,6 +121,7 @@ pub fn run_app() {
             app::account_store::set_active_account,
             app::account_store::upsert_account,
             app::invoke::show_empty_account_state,
+            app::invoke::open_external_url,
             app::invoke::send_notification,
             app::invoke::increment_dock_badge,
             app::invoke::set_dock_badge,

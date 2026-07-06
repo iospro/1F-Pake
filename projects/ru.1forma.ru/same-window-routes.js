@@ -20,11 +20,10 @@
     }
   }
 
-  function isMacOverlayTitlebarEnabled() {
-    const isMac = /Mac/i.test(navigator.userAgent);
+  function isOverlayTitlebarEnabled() {
     const hideTitleBar =
       window.pakeConfig?.hide_title_bar || window.pakeConfig?.hideTitleBar;
-    return Boolean(isMac && hideTitleBar);
+    return Boolean(hideTitleBar);
   }
 
   window.__PAKE_EMPTY_ACCOUNT_STATE_URL__ = "empty-account.html";
@@ -319,43 +318,6 @@
       });
       return originalSend.apply(this, arguments);
     };
-  }
-
-  function isInternal1FormaUrl(url) {
-    const absolute = toAbsoluteUrl(url);
-    if (!absolute) return false;
-    const host = absolute.hostname.toLowerCase();
-    return host === "ru.1forma.ru" || host.endsWith(".1forma.ru");
-  }
-
-  function normalizeText(value) {
-    return (value || "").toLowerCase().replace(/\s+/g, " ").trim();
-  }
-
-  function isVksLabel(text) {
-    const normalized = normalizeText(text);
-    return (
-      normalized.includes("вкс") ||
-      normalized.includes("видеоконф") ||
-      normalized.includes("видеосвяз") ||
-      normalized.includes("видео-конф") ||
-      normalized.includes("video")
-    );
-  }
-
-  function isVksUrl(url) {
-    const absolute = toAbsoluteUrl(url);
-    if (!absolute) return false;
-    const haystack = `${absolute.href} ${absolute.hostname} ${absolute.pathname}`.toLowerCase();
-    return (
-      haystack.includes("vks") ||
-      haystack.includes("jitsi") ||
-      haystack.includes("conference") ||
-      haystack.includes("videocall") ||
-      haystack.includes("video-call") ||
-      haystack.includes("webinar") ||
-      haystack.includes("meet")
-    );
   }
 
   function getStoredNumber(key, fallback) {
@@ -728,7 +690,7 @@
 
   function ensureTitlebar() {
     if (window.__PAKE_CHILD_TAB__) return;
-    if (!isMacOverlayTitlebarEnabled()) return;
+    if (!isOverlayTitlebarEnabled()) return;
     if (!document.documentElement) return;
 
     ensureTitlebarStyles();
@@ -822,7 +784,7 @@
 
   function ensureEmptyAccountsPlaceholder() {
     if (window.__PAKE_CHILD_TAB__) return;
-    if (!isMacOverlayTitlebarEnabled()) return;
+    if (!isOverlayTitlebarEnabled()) return;
     if (!document.body) return;
     const placeholder = document.getElementById("pake-empty-account-placeholder");
     if (placeholder) placeholder.remove();
@@ -1031,19 +993,19 @@
     });
   }
 
-  function shouldForceSameWindow(anchor) {
+  function isSameCurrentDomain(url) {
+    const absolute = toAbsoluteUrl(url);
+    if (!absolute) return false;
+    return absolute.hostname.toLowerCase() === window.location.hostname.toLowerCase();
+  }
+
+  function shouldOpenExternalBrowser(anchor) {
     if (!anchor) return false;
     const href = anchor.getAttribute("href") || anchor.href || "";
-    const text = [anchor.textContent, anchor.getAttribute("aria-label"), anchor.title]
-      .filter(Boolean)
-      .join(" ");
-
-    const target = (anchor.getAttribute("target") || "").toLowerCase();
-    return (
-      isVksLabel(text) ||
-      isVksUrl(href) ||
-      ((target === "_blank" || target === "_new") && isInternal1FormaUrl(href))
-    );
+    const absolute = toAbsoluteUrl(href);
+    if (!absolute) return false;
+    if (!/^https?:$/i.test(absolute.protocol)) return true;
+    return !isSameCurrentDomain(absolute.href);
   }
 
   function navigateInPlace(url) {
@@ -1055,6 +1017,27 @@
     } else if (typeof url === "string" && url) {
       window.location.href = url;
     }
+  }
+
+  async function openExternalBrowser(url) {
+    const absolute = toAbsoluteUrl(url);
+    const target = absolute ? absolute.href : String(url || "").trim();
+    if (!target) return;
+
+    try {
+      await invokeNative("open_external_url", { url: target });
+      return;
+    } catch {
+      // Fall back to the platform browser behavior below.
+    }
+
+    const originalWindowOpen = window.__PAKE_ORIGINAL_WINDOW_OPEN__ || window.open;
+    if (typeof originalWindowOpen === "function") {
+      originalWindowOpen.call(window, target, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    window.location.href = target;
   }
 
   function normalizeNavigationUrl(url) {
@@ -1072,10 +1055,15 @@
     "click",
     (event) => {
       const anchor = event.target && event.target.closest ? event.target.closest("a") : null;
-      if (!shouldForceSameWindow(anchor)) return;
-
       const href = anchor.href || anchor.getAttribute("href");
       if (!href) return;
+
+      if (shouldOpenExternalBrowser(anchor)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openExternalBrowser(href);
+        return;
+      }
 
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -1085,18 +1073,15 @@
   );
 
   const originalWindowOpen = window.open;
+  window.__PAKE_ORIGINAL_WINDOW_OPEN__ = originalWindowOpen;
   window.open = function (url, name, specs) {
-    const shouldRouteInPlace =
-      isVksUrl(url) ||
-      isVksLabel(name) ||
-      isInternal1FormaUrl(url);
-
-    if (shouldRouteInPlace) {
-      navigateInPlace(normalizeNavigationUrl(url));
+    if (!isSameCurrentDomain(url)) {
+      openExternalBrowser(url);
       return window;
     }
 
-    return originalWindowOpen.call(window, url, name, specs);
+    navigateInPlace(normalizeNavigationUrl(url));
+    return window;
   };
 
   const originalPushState = history.pushState;

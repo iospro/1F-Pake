@@ -65,10 +65,8 @@
   }
 
   function getEmptyAccountStateHref() {
-    const isWindowsLike = /Windows/i.test(navigator.userAgent) || /Android/i.test(navigator.userAgent);
-    return isWindowsLike
-      ? "https://tauri.localhost/empty-account.html"
-      : "tauri://localhost/empty-account.html";
+    const fallback = window.__PAKE_EMPTY_ACCOUNT_STATE_URL__ || "empty-account.html";
+    return new URL(fallback, window.location.href).href;
   }
 
   function updateSubmitState(form) {
@@ -453,6 +451,10 @@
         font-size: 12px;
         line-height: 1.35;
         user-select: text;
+      }
+
+      #${PANEL_ID} .pake-accounts-debug[hidden] {
+        display: none !important;
       }
 
       #${PANEL_ID} .pake-accounts-head {

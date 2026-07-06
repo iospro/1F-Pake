@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use tauri::http::Method;
 use tauri::{command, AppHandle, Manager, Url, WebviewWindow};
 use tauri_plugin_http::reqwest::{ClientBuilder, Request};
+use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "macos")]
 use tauri::Theme;
@@ -238,4 +239,16 @@ pub fn show_empty_account_state(app: AppHandle) -> Result<(), String> {
     window
         .navigate(url)
         .map_err(|error| format!("Failed to navigate to empty account page: {error}"))
+}
+
+#[command]
+pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+    let target = url.trim();
+    if target.is_empty() {
+        return Err("Empty url".to_string());
+    }
+
+    app.opener()
+        .open_url(target, None::<&str>)
+        .map_err(|error| format!("Failed to open external url: {error}"))
 }
