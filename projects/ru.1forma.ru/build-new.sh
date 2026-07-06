@@ -106,7 +106,7 @@ remove_app_bundle
 mkdir -p "$APP_STAGING_DIR"
 
 cd "$PAKE_CLI_ROOT"
-PAKE_CREATE_APP=1 node "$ROOT/scripts/run-pake-build.js" \
+PAKE_CREATE_APP=1 node "$ROOT/scripts/run-pake-build.cjs" \
   --name "$APP_SLUG" \
   --title "Первая Форма"
 

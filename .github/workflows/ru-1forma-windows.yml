@@ -53,7 +53,7 @@ jobs:
       - name: Build 1Forma MSI
         shell: pwsh
         run: |
-          node projects/ru.1forma.ru/scripts/run-pake-build.js --url "${{ inputs.url }}" --name "${{ inputs.name }}" --title "${{ inputs.title }}" --width "${{ inputs.width }}" --height "${{ inputs.height }}" --targets x64
+          node projects/ru.1forma.ru/scripts/run-pake-build.cjs --url "${{ inputs.url }}" --name "${{ inputs.name }}" --title "${{ inputs.title }}" --width "${{ inputs.width }}" --height "${{ inputs.height }}" --targets x64
 
           New-Item -Path "output\windows" -ItemType Directory -Force | Out-Null
 
